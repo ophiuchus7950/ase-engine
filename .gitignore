@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+.env
+*.log
+*.tsbuildinfo
+.DS_Store
+.opencode/
+# Local Python dev env for the Scrapling sidecar (the container is the source of truth)
+.scrapling-venv/
+scraper/__pycache__/

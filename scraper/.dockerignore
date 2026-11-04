@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.scrapling-venv/
+.git/
+venv/

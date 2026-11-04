@@ -1,0 +1,55 @@
+{
+  "name": "rivela-ase",
+  "version": "0.1.0",
+  "description": "Rivela — Autonomous Signal Engine (ASE). Competitor intelligence pipeline: collection -> normalization/dedup -> classification -> scoring -> routing.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/api/server.ts",
+    "start": "tsx src/api/server.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "migrate": "tsx db/migrate.ts",
+    "seed": "tsx db/seed.ts",
+    "worker:collect": "tsx src/workers/collector.worker.ts",
+    "worker:classify": "tsx src/workers/classifier.worker.ts",
+    "worker:score": "tsx src/workers/scorer.worker.ts",
+    "worker:route": "tsx src/workers/router.worker.ts",
+    "worker:battlecard": "tsx src/workers/battlecard.worker.ts",
+    "worker:slack": "tsx src/integrations/slack-standalone.ts",
+    "engine": "tsx scripts/run-engine.mts",
+    "scraper:up": "docker compose up -d scraper",
+    "scraper:build": "docker build -t ase-scraper ./scraper"
+  },
+  "dependencies": {
+    "@slack/bolt": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.0.0",
+    "pg": "^8.13.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.0",
+    "@types/pg": "^8.11.10",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-airbnb-typescript": "^18.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.30.0",
+    "eslint-plugin-prettier": "^5.2.1",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vitest": "^3.0.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}

@@ -1,0 +1,37 @@
+# Rivela ASE — Slack App Manifest
+# Paste this into the "From a manifest" editor on api.slack.com/apps
+# (Create an app -> From a manifest -> select your workspace -> Next -> paste -> Create)
+#
+# NOTE: If the manifest editor asks for a display name / username, these already
+# carry them. After creating, go to OAuth & Permissions and "Install to Workspace",
+# then copy the "Bot User OAuth Token" (xoxb-...) into the ASE Monitoring -> Slack Bot UI.
+
+display_information:
+  name: ASE Insight Bot
+  description: Rivela ASE competitive-intelligence alert bot (prices, hiring, messaging & more)
+  background_color: "#0FCCB8"
+
+features:
+  bot_user:
+    display_name: ASE Insight Bot
+    always_online: true
+
+oauth_config:
+  scopes:
+    bot:
+      - chat:write              # send alert messages to channels
+      - chat:write.public       # post to public channels without joining
+      - channels:read           # resolve channel names -> IDs
+      - groups:read             # resolve private channel names
+      - im:write                # send direct messages
+      - app_mentions:read       # respond when mentioned (commands/DMs)
+
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
