@@ -40,8 +40,6 @@ import {
   Trash2,
   Layers,
   Check,
-  LogOut,
-  KeyRound,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -74,22 +72,13 @@ import {
   loadActivitySignals,
   loadMoreSignals,
   fetchBattlecardHistoryFor,
-  login,
-  register,
-  logout,
 } from '../data/ase-store';
-import {
-  fetchDataSources,
-  fetchBattlecard,
-  fetchSlackSettings,
-  updateSlackSettings,
-} from '../api/client';
+import { fetchDataSources, fetchBattlecard } from '../api/client';
 import type {
   AlertRuleWire,
   BattlecardWire,
   DataSourceWire,
   SignalListQuery,
-  SlackSettingsWire,
   UserWire,
 } from '../api/client';
 import type {
@@ -377,127 +366,6 @@ function FieldLabel({ children }: { children: ReactNode }) {
 const inputCls =
   'w-full bg-white/[0.04] border border-white/[0.08] rounded-lg text-xs text-foreground placeholder:text-muted-foreground px-3 py-2 focus:outline-none focus:border-teal-400/40 transition-colors';
 
-// ─── Login Screen ─────────────────────────────────────────────────────────────
-function LoginScreen({ onAuthed }: { onAuthed: () => void }) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !password) {
-      setError('Name and password are required');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      if (mode === 'login') {
-        await login(name.trim(), password);
-      } else {
-        await register(name.trim(), password);
-      }
-      onAuthed();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed');
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div
-      className="h-screen flex items-center justify-center bg-background text-foreground overflow-hidden"
-      style={{ colorScheme: 'dark' }}
-    >
-      <div className="w-[380px] max-w-[92vw]">
-        <div className="bg-card border border-white/[0.08] rounded-2xl p-7 shadow-2xl">
-          <div className="flex items-center gap-2.5 mb-6">
-            <div className="w-9 h-9 rounded-lg bg-teal-400/15 border border-teal-400/25 flex items-center justify-center">
-              <Zap size={16} style={{ color: '#0FCCB8' }} />
-            </div>
-            <div>
-              <div
-                className="text-sm font-bold text-foreground tracking-tight"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                ASE
-              </div>
-              <div className="text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
-                Autonomous Signal Engine
-              </div>
-            </div>
-          </div>
-
-          <h1 className="text-base font-semibold text-foreground mb-1">
-            {mode === 'login' ? 'Sign in' : 'Create your account'}
-          </h1>
-          <p className="text-[11px] text-muted-foreground mb-5">
-            {mode === 'login'
-              ? 'Access your competitive intelligence workspace'
-              : 'First run — set up your workspace account'}
-          </p>
-
-          <form onSubmit={submit} className="space-y-3.5">
-            <div>
-              <FieldLabel>Name</FieldLabel>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
-                autoFocus
-                className={inputCls}
-              />
-            </div>
-            <div>
-              <FieldLabel>Password</FieldLabel>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className={inputCls}
-              />
-            </div>
-
-            {error && (
-              <div className="px-3 py-2 bg-red-400/10 border border-red-400/25 rounded-lg text-[11px] text-red-400">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-400 hover:bg-teal-300 disabled:opacity-50 text-black text-xs font-bold rounded-lg transition-colors"
-            >
-              <KeyRound size={12} />
-              {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
-            </button>
-          </form>
-
-          <div className="mt-4 text-center">
-            <button
-              onClick={() => {
-                setMode(mode === 'login' ? 'register' : 'login');
-                setError(null);
-              }}
-              className="text-[11px] text-muted-foreground hover:text-teal-400 transition-colors"
-            >
-              {mode === 'login' ? 'No account yet? Create one' : 'Already have an account? Sign in'}
-            </button>
-          </div>
-        </div>
-        <p className="text-center text-[10px] text-muted-foreground mt-4">
-          Rivela ASE · schema 002 · connected to the live engine
-        </p>
-      </div>
-    </div>
-  );
-}
-
 // ─── Add Competitor Modal ─────────────────────────────────────────────────────
 function AddCompetitorModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
@@ -539,7 +407,7 @@ function AddCompetitorModal({ onClose }: { onClose: () => void }) {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Gong"
+            placeholder="e.g. Acme Corp"
             autoFocus
             className={inputCls}
           />
@@ -596,7 +464,7 @@ function AddCompetitorModal({ onClose }: { onClose: () => void }) {
 }
 
 // ─── New / Edit Alert Rule Modal ──────────────────────────────────────────────
-const CHANNEL_TYPES = ['slack', 'email', 'webhook'] as const;
+const CHANNEL_TYPES = ['email', 'webhook'] as const;
 
 function RuleModal({ initial, onClose }: { initial: AlertRuleWire | null; onClose: () => void }) {
   const [name, setName] = useState(initial?.name ?? '');
@@ -608,8 +476,8 @@ function RuleModal({ initial, onClose }: { initial: AlertRuleWire | null; onClos
     (initial?.triggers.categories ?? []).map((c) => WIRE_TO_CATEGORY[c] ?? 'Other'),
   );
   const [keywords, setKeywords] = useState((initial?.triggers.keywords ?? []).join(', '));
-  const [channelType, setChannelType] = useState<'slack' | 'email' | 'webhook'>(
-    initial?.channels[0]?.type ?? 'slack',
+  const [channelType, setChannelType] = useState<'email' | 'webhook'>(
+    initial?.channels[0]?.type ?? 'email',
   );
   const [channelTarget, setChannelTarget] = useState(initial?.channels[0]?.target ?? '');
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
@@ -748,7 +616,7 @@ function RuleModal({ initial, onClose }: { initial: AlertRuleWire | null; onClos
             <FieldLabel>Channel</FieldLabel>
             <select
               value={channelType}
-              onChange={(e) => setChannelType(e.target.value as 'slack' | 'email' | 'webhook')}
+              onChange={(e) => setChannelType(e.target.value as 'email' | 'webhook')}
               className={`${inputCls} appearance-none`}
             >
               {CHANNEL_TYPES.map((t) => (
@@ -764,13 +632,7 @@ function RuleModal({ initial, onClose }: { initial: AlertRuleWire | null; onClos
               type="text"
               value={channelTarget}
               onChange={(e) => setChannelTarget(e.target.value)}
-              placeholder={
-                channelType === 'slack'
-                  ? '#channel'
-                  : channelType === 'email'
-                    ? 'team@co.com'
-                    : 'https://hook'
-              }
+              placeholder={channelType === 'email' ? 'team@co.com' : 'https://hook'}
               className={inputCls}
             />
           </div>
@@ -1962,9 +1824,14 @@ function TimelineView({ onSignal, search }: { onSignal: (s: Signal) => void; sea
     : SIGNALS;
   const filtered =
     compFilter === 'All' ? searched : searched.filter((s) => s.competitor === compFilter);
+  // Sort newest-first before grouping so day headers and the signals inside
+  // each day are deterministic; unparseable timestamps are dropped.
+  const sorted = [...filtered].sort((a, b) => +new Date(b.detectedAt) - +new Date(a.detectedAt));
   const groups: Record<string, Signal[]> = {};
-  filtered.forEach((s) => {
-    const d = new Date(s.detectedAt).toLocaleDateString('en-US', {
+  sorted.forEach((s) => {
+    const t = new Date(s.detectedAt).getTime();
+    if (Number.isNaN(t)) return;
+    const d = new Date(t).toLocaleDateString('en-US', {
       weekday: 'long',
       month: 'long',
       day: 'numeric',
@@ -2059,28 +1926,30 @@ function DigestView({ search }: { search: string }) {
           s.competitor.toLowerCase().includes(q),
       )
     : SIGNALS;
-  const high = searched.filter((s) => getPriority(s.significance) === 'high');
-  const med = searched.filter((s) => getPriority(s.significance) === 'medium');
-  const topStory = searched.find((s) => s.significance === 10) ?? searched[0];
-
-  // Real date band derived from the actual signals (no hardcoded mock dates).
-  const fmt = (iso: string): string => {
-    const d = new Date(iso);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  // Weekly window: the last 7 days (rolling, day-aligned). The digest is a
+  // weekly email-style view, so it must never span the whole signal history.
+  const now = new Date();
+  const weekEnd = new Date(now);
+  weekEnd.setHours(23, 59, 59, 999);
+  const weekStart = new Date(weekEnd);
+  weekStart.setDate(weekStart.getDate() - 6);
+  weekStart.setHours(0, 0, 0, 0);
+  const inWeek = (iso: string): boolean => {
+    const t = new Date(iso).getTime();
+    return !Number.isNaN(t) && t >= weekStart.getTime() && t <= weekEnd.getTime();
   };
-  const dates = searched
-    .map((s) => new Date(s.detectedAt).getTime())
-    .filter((t) => !Number.isNaN(t));
-  const dayFmt = (t: number): string =>
-    new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const digestStart = dates.length ? dayFmt(Math.min(...dates)) : fmt(new Date().toISOString());
-  const digestEnd = dates.length ? dayFmt(Math.max(...dates)) : fmt(new Date().toISOString());
-  const digestLabel = dates.length
-    ? `${digestStart} — ${digestEnd}`
-    : fmt(new Date().toISOString());
-  const digestDate = dates.length
-    ? fmt(new Date(Math.max(...dates)).toISOString())
-    : fmt(new Date().toISOString());
+  const weekSignals = searched.filter((s) => inWeek(s.detectedAt));
+
+  const high = weekSignals.filter((s) => getPriority(s.significance) === 'high');
+  const med = weekSignals.filter((s) => getPriority(s.significance) === 'medium');
+  const topStory = weekSignals.find((s) => s.significance === 10) ?? weekSignals[0];
+
+  const dayFmt = (d: Date): string =>
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const fullFmt = (d: Date): string =>
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const digestLabel = `${dayFmt(weekStart)} — ${dayFmt(weekEnd)}`;
+  const digestDate = fullFmt(now);
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-5">
@@ -2126,7 +1995,7 @@ function DigestView({ search }: { search: string }) {
               Your Competitive Intelligence Digest
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
-              Week of {digestLabel} · {SIGNALS.length} signals detected · {high.length} require
+              Week of {digestLabel} · {weekSignals.length} signals detected · {high.length} require
               action
             </p>
           </div>
@@ -2274,7 +2143,6 @@ function ruleToDraft(r: AlertRuleWire): RuleDraft {
 
 function AlertsView() {
   const { rules, notifications } = useAseData();
-  const [slackPreview, setSlackPreview] = useState(false);
   const [showRule, setShowRule] = useState(false);
   const [editing, setEditing] = useState<AlertRuleWire | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -2337,13 +2205,6 @@ function AlertsView() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setSlackPreview(!slackPreview)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Layers size={11} />
-            {slackPreview ? 'Hide' : 'Preview'} Slack Alert
-          </button>
-          <button
             onClick={newRule}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-400 hover:bg-teal-300 text-black text-[11px] font-bold rounded-lg transition-colors"
           >
@@ -2356,66 +2217,6 @@ function AlertsView() {
       {actionError && (
         <div className="mb-4 px-3 py-2 bg-red-400/10 border border-red-400/25 rounded-lg text-[11px] text-red-400">
           {actionError}
-        </div>
-      )}
-
-      {/* Slack Preview */}
-      {slackPreview && (
-        <div className="mb-5 bg-[#1A1D21] border border-white/[0.08] rounded-xl overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06]">
-            <div className="w-3 h-3 rounded-sm bg-[#4A154B] flex items-center justify-center">
-              <span className="text-[6px] font-bold text-white">#</span>
-            </div>
-            <span className="text-[11px] font-semibold text-foreground">competitive-intel</span>
-            <span className="text-[10px] text-muted-foreground">— Slack notification preview</span>
-          </div>
-          <div className="p-4">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded bg-teal-400/20 flex items-center justify-center flex-shrink-0">
-                <Zap size={14} style={{ color: '#0FCCB8' }} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <span className="text-xs font-bold text-foreground">ASE Intelligence Bot</span>
-                  <span
-                    className="text-[9px] bg-teal-400/15 text-teal-400 px-1.5 py-0.5 rounded"
-                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                  >
-                    APP
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">today at 9:23 AM</span>
-                </div>
-                <div className="bg-[#222529] border-l-[3px] border-red-400 rounded-r-lg p-3 max-w-lg">
-                  <p className="text-[11px] font-bold text-red-400 mb-1">
-                    🚨 HIGH PRIORITY SIGNAL · Score 9/10
-                  </p>
-                  <p className="text-xs font-semibold text-foreground mb-1">
-                    Gong Introduces AI-Powered Deal Risk Scoring
-                  </p>
-                  <p className="text-[11px] text-muted-foreground mb-2.5 leading-relaxed">
-                    New 'Deal Risk Score' feature assigns AI risk ratings to all open deals.
-                    Directly encroaches on pipeline health positioning.
-                  </p>
-                  <div className="flex items-center gap-3 text-[10px] mb-3">
-                    <span className="text-blue-400">📦 Product</span>
-                    <span className="text-muted-foreground">gong.io/changelog</span>
-                    <span className="text-muted-foreground">2h ago</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button className="px-2.5 py-1 bg-teal-400 text-black text-[10px] font-bold rounded">
-                      Update Battlecard
-                    </button>
-                    <button className="px-2.5 py-1 bg-white/10 text-foreground text-[10px] rounded">
-                      View Signal
-                    </button>
-                    <button className="px-2.5 py-1 bg-white/10 text-foreground text-[10px] rounded">
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -2596,58 +2397,6 @@ function MonitoringView() {
   const [showAdd, setShowAdd] = useState(false);
   const [sourceError, setSourceError] = useState<string | null>(null);
 
-  // ── Slack bot runtime config ───────────────────────────────────────────────
-  const [slack, setSlack] = useState<SlackSettingsWire | null>(null);
-  const [slackBotToken, setSlackBotToken] = useState('');
-  const [slackAppToken, setSlackAppToken] = useState('');
-  const [slackSigningSecret, setSlackSigningSecret] = useState('');
-  const [slackChannel, setSlackChannel] = useState('#ase-alerts');
-  const [slackWebUrl, setSlackWebUrl] = useState('http://localhost:5173');
-  const [slackMsg, setSlackMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
-  const [slackSaving, setSlackSaving] = useState(false);
-
-  useEffect(() => {
-    if (!user) return;
-    fetchSlackSettings()
-      .then((s) => {
-        setSlack(s);
-        setSlackChannel(s.default_channel);
-        setSlackWebUrl(s.web_app_url);
-      })
-      .catch((err) =>
-        setSlackMsg({
-          type: 'err',
-          text: err instanceof Error ? err.message : 'Failed to load Slack settings',
-        }),
-      );
-  }, [user]);
-
-  const saveSlack = async () => {
-    setSlackSaving(true);
-    setSlackMsg(null);
-    try {
-      const updated = await updateSlackSettings({
-        ...(slackBotToken.trim() ? { bot_token: slackBotToken.trim() } : {}),
-        ...(slackAppToken.trim() ? { app_token: slackAppToken.trim() } : {}),
-        ...(slackSigningSecret.trim() ? { signing_secret: slackSigningSecret.trim() } : {}),
-        default_channel: slackChannel.trim() || '#ase-alerts',
-        web_app_url: slackWebUrl.trim() || 'http://localhost:5173',
-      });
-      setSlack(updated);
-      setSlackBotToken('');
-      setSlackAppToken('');
-      setSlackSigningSecret('');
-      setSlackMsg({
-        type: 'ok',
-        text: 'Slack settings saved — the bot will pick them up shortly.',
-      });
-    } catch (err) {
-      setSlackMsg({ type: 'err', text: err instanceof Error ? err.message : 'Failed to save' });
-    } finally {
-      setSlackSaving(false);
-    }
-  };
-
   useEffect(() => {
     if (!user) return;
     fetchDataSources(user.organization_id)
@@ -2808,106 +2557,6 @@ function MonitoringView() {
               </span>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Slack bot runtime config */}
-      <div className="mt-7">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold text-foreground">Slack Bot</h2>
-          <span
-            className={`text-[10px] px-2 py-0.5 rounded ${
-              slack?.configured ? 'text-teal-400 bg-teal-400/10' : 'text-amber-400 bg-amber-400/10'
-            }`}
-            style={{ fontFamily: "'JetBrains Mono', monospace" }}
-          >
-            {slack?.configured ? '● Connected tokens' : '○ Not configured'}
-          </span>
-        </div>
-        <div className="bg-card border border-white/[0.07] rounded-xl p-5">
-          <p className="text-[11px] text-muted-foreground mb-4 leading-relaxed">
-            Paste your own Slack app tokens to enable the bot. The engine saves them in your local
-            database and reconnects automatically — no restart needed. Tokens are never shown back
-            to you in full.
-          </p>
-
-          {slackMsg && (
-            <div
-              className={`mb-3 px-3 py-2 rounded-lg text-[11px] ${
-                slackMsg.type === 'ok'
-                  ? 'bg-teal-400/10 border border-teal-400/25 text-teal-400'
-                  : 'bg-red-400/10 border border-red-400/25 text-red-400'
-              }`}
-            >
-              {slackMsg.text}
-            </div>
-          )}
-
-          <div className="space-y-3">
-            <div>
-              <FieldLabel>Bot token (xoxb-…)</FieldLabel>
-              <input
-                type="password"
-                value={slackBotToken}
-                onChange={(e) => setSlackBotToken(e.target.value)}
-                placeholder={slack?.bot_token_masked ?? 'xoxb-…'}
-                className={inputCls}
-              />
-            </div>
-            <div>
-              <FieldLabel>App token (xapp-…, Socket Mode)</FieldLabel>
-              <input
-                type="password"
-                value={slackAppToken}
-                onChange={(e) => setSlackAppToken(e.target.value)}
-                placeholder={slack?.app_token_configured ? '••••' : 'xapp-…'}
-                className={inputCls}
-              />
-            </div>
-            <div>
-              <FieldLabel>Signing secret (optional)</FieldLabel>
-              <input
-                type="password"
-                value={slackSigningSecret}
-                onChange={(e) => setSlackSigningSecret(e.target.value)}
-                placeholder={slack?.signing_secret_configured ? '••••' : '…'}
-                className={inputCls}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <FieldLabel>Default channel</FieldLabel>
-                <input
-                  value={slackChannel}
-                  onChange={(e) => setSlackChannel(e.target.value)}
-                  placeholder="#ase-alerts"
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <FieldLabel>Web app URL (for buttons)</FieldLabel>
-                <input
-                  value={slackWebUrl}
-                  onChange={(e) => setSlackWebUrl(e.target.value)}
-                  placeholder="http://localhost:5173"
-                  className={inputCls}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 mt-4">
-            <button
-              onClick={saveSlack}
-              disabled={slackSaving}
-              className="px-3.5 py-2 bg-teal-400 hover:bg-teal-300 disabled:opacity-50 text-black text-[11px] font-bold rounded-lg transition-colors"
-            >
-              {slackSaving ? 'Saving…' : 'Save Slack settings'}
-            </button>
-            <span className="text-[10px] text-muted-foreground">
-              {slack?.configured ? `Bot token ${slack.bot_token_masked}` : 'No tokens saved yet'}
-            </span>
-          </div>
         </div>
       </div>
 
@@ -3230,7 +2879,7 @@ function ActivitySignalsTab({
 
 function ActivityNotificationsTab() {
   const { notifications } = useAseData();
-  const [channelFilter, setChannelFilter] = useState<'all' | 'slack' | 'in_app'>('all');
+  const [channelFilter, setChannelFilter] = useState<'all' | 'in_app'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'delivered' | 'failed' | 'pending'>(
     'all',
   );
@@ -3259,7 +2908,6 @@ function ActivityNotificationsTab() {
         {(
           [
             ['all', 'All'],
-            ['slack', 'Slack'],
             ['in_app', 'In-app'],
           ] as const
         ).map(([val, label]) => (
@@ -3326,7 +2974,6 @@ function ActivityNotificationsTab() {
                     style={{ fontFamily: "'JetBrains Mono', monospace" }}
                   >
                     {n.channel}
-                    {n.channel_target ? ` → ${n.channel_target}` : ''}
                   </span>
                   <span
                     className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
@@ -3358,29 +3005,9 @@ function ActivityNotificationsTab() {
               )}
               <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
                 <span>
-                  {n.status === 'delivered' && n.delivered_at ? (
-                    <>
-                      Delivered <TimeAgo iso={n.delivered_at} />
-                    </>
-                  ) : (
-                    <>
-                      Created <TimeAgo iso={n.created_at} />
-                    </>
-                  )}
+                  Created <TimeAgo iso={n.created_at} />
                 </span>
-                {n.permalink && (
-                  <a
-                    href={n.permalink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1 text-teal-400 hover:text-teal-300 transition-colors"
-                  >
-                    <ExternalLink size={10} /> Slack
-                  </a>
-                )}
-                {n.status === 'failed' && n.error && (
-                  <span className="text-red-400">✕ {n.error}</span>
-                )}
+                {n.status === 'failed' && <span className="text-red-400">✕ delivery failed</span>}
               </div>
             </div>
           ))
@@ -3637,12 +3264,10 @@ function Sidebar({
   current,
   onNav,
   user,
-  onLogout,
 }: {
   current: View;
   onNav: (v: View) => void;
   user: UserWire;
-  onLogout: () => void;
 }) {
   const initials = user.name
     .trim()
@@ -3735,13 +3360,6 @@ function Sidebar({
             <div className="text-[11px] font-medium text-foreground truncate">{user.name}</div>
             <div className="text-[9px] text-muted-foreground">Signal Analyst</div>
           </div>
-          <button
-            onClick={onLogout}
-            className="p-1 rounded hover:bg-white/[0.06] text-muted-foreground hover:text-red-400 transition-colors"
-            title="Sign out"
-          >
-            <LogOut size={11} />
-          </button>
         </div>
       </div>
     </div>
@@ -3759,7 +3377,7 @@ export default function App() {
   const [activityCompetitor, setActivityCompetitor] = useState<string | null>(null);
   const [activitySignal, setActivitySignal] = useState<string | null>(null);
   const [competitorDeep, setCompetitorDeep] = useState<string | null>(null);
-  const { live, lastSync, user, session, unreadCount, competitors } = useAseData();
+  const { live, lastSync, user, unreadCount, competitors } = useAseData();
 
   // Load live engine data on mount, then poll so the UI tracks the workers.
   useEffect(() => {
@@ -3768,7 +3386,7 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  // URL-param deep-link router (SPA, no react-router). The Slack bot's
+  // URL-param deep-link router (SPA, no react-router). External integrations'
   // "Open signal" / "View battlecard" buttons point at these URLs.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -3788,35 +3406,22 @@ export default function App() {
     }
   }, []);
 
-  // Refresh schema-002 slices once logged in.
+  // Refresh user-scoped slices once the local identity (/me) resolves.
   useEffect(() => {
-    if (!session || !user) return;
+    if (!user) return;
     refreshCompetitors();
     refreshRules();
     refreshNotifications();
     fetchDataSources(user.organization_id)
       .then((items) => setDataSources(items))
       .catch(() => setDataSources([]));
-  }, [session, user]);
+  }, [user]);
 
   const syncLabel = live
     ? lastSync
       ? `synced ${new Date(lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
       : 'syncing…'
     : 'demo data';
-
-  const handleLogout = () => {
-    logout();
-    setView('dashboard');
-    setSignal(null);
-    setBellOpen(false);
-    setSearch('');
-    setDataSources(null);
-    setActivityTab('signals');
-    setActivityCompetitor(null);
-    setActivitySignal(null);
-    setCompetitorDeep(null);
-  };
 
   const openBell = () => {
     setBellOpen(!bellOpen);
@@ -3829,8 +3434,8 @@ export default function App() {
     setView('activity');
   };
 
-  if (!session || !user) {
-    return <LoginScreen onAuthed={() => setBellOpen(false)} />;
+  if (!user) {
+    return null; // local identity (/me) still resolving
   }
 
   const sourceCount = competitors.length + (dataSources?.length ?? 0);
@@ -3884,7 +3489,7 @@ export default function App() {
 
       {/* Main */}
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar current={view} onNav={setView} user={user} onLogout={handleLogout} />
+        <Sidebar current={view} onNav={setView} user={user} />
         <main className="flex-1 flex flex-col overflow-hidden">
           {view === 'dashboard' && (
             <DashboardView

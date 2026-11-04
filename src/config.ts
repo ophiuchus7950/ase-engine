@@ -8,24 +8,18 @@ import { z } from 'zod';
 const EnvSchema = z.object({
   DATABASE_URL: z.string().default('postgres://ase:ase_dev_pw@localhost:5432/ase'),
   PORT: z.coerce.number().int().positive().default(3000),
-  /** Shared internal service auth — workers send `X-API-Key: <this>`. */
-  ASE_API_KEY: z.string().min(1).default('dev-internal-key'),
-  /** Stage 1 classification model, served via the opencode CLI (OpenCode Zen). */
-  LLM_MODEL: z.string().default('opencode/deepseek-v4-flash-free'),
-  OPENCODE_BIN: z.string().default('opencode'),
+  /** Stage 1 classification model, via any OpenAI-compatible API. */
+  LLM_MODEL: z.string().default('mistralai/mistral-7b-instruct:free'),
+  /** Base URL of the LLM provider's OpenAI-compatible API. */
+  LLM_BASE_URL: z.string().default('https://openrouter.ai/api/v1'),
+  /** API key for the LLM provider. */
+  LLM_API_KEY: z.string().default(''),
   /** Base URL workers use to reach the internal API. */
   API_BASE_URL: z.string().default('http://localhost:3000'),
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(15_000),
   WORKER_BATCH_SIZE: z.coerce.number().int().positive().default(10),
   /** Base URL of the Scrapling stealth-browser sidecar (POST /scrape). */
   SCRAPLING_SERVICE_URL: z.string().default('http://localhost:8410'),
-  /** Slack integration (Workstream B). Optional — when unset, Slack is a no-op. */
-  SLACK_BOT_TOKEN: z.string().default(''),
-  SLACK_APP_TOKEN: z.string().default(''),
-  SLACK_SIGNING_SECRET: z.string().default(''),
-  SLACK_DEFAULT_CHANNEL: z.string().default('#ase-alerts'),
-  /** Base URL of the web app, for interactive-button deep links. */
-  ASE_WEB_APP_URL: z.string().default('http://localhost:5173'),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

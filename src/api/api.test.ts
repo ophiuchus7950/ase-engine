@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { config } from '../config';
 import { createRepos } from '../db/repos';
 import { buildApp } from './app';
 import type {
@@ -23,14 +24,12 @@ import type {
   SignalWire,
 } from './dto/schemas';
 
-const DB_USER = 'ase';
-const DB_PASSWORD = 'ase_dev_pw';
-const DB_HOST = 'localhost';
-const DB_PORT = 5432;
+// Derive the dedicated test database from DATABASE_URL (same contract as
+// src/db/test-db.ts), so `DATABASE_URL=... npm test` runs anywhere.
+const BASE_DATABASE_URL = config.DATABASE_URL.replace(/\/[^/]*$/, '');
 const TEST_DB_NAME = 'ase_test_api';
-const MAINTENANCE_URL = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/postgres`;
-const TEST_DB_URL = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${TEST_DB_NAME}`;
-const API_KEY = 'test-api-key';
+const MAINTENANCE_URL = `${BASE_DATABASE_URL}/postgres`;
+const TEST_DB_URL = `${BASE_DATABASE_URL}/${TEST_DB_NAME}`;
 
 const SCHEMA_SQL = readFileSync(resolve(process.cwd(), 'db/ase_schema.sql'), 'utf8');
 const SCHEMA_002_SQL = readFileSync(resolve(process.cwd(), 'db/ase_schema_002.sql'), 'utf8');
@@ -51,7 +50,7 @@ beforeAll(async () => {
   pool = new Pool({ connectionString: TEST_DB_URL });
   await pool.query(SCHEMA_SQL);
   await pool.query(SCHEMA_002_SQL);
-  app = buildApp(createRepos(pool), { apiKey: API_KEY });
+  app = buildApp(createRepos(pool));
   await app.ready();
 });
 
@@ -93,7 +92,7 @@ async function seedOrg(orgName = 'Test Org', competitorName = 'Acme Corp'): Prom
 }
 
 function headers(extra: Record<string, string> = {}): Record<string, string> {
-  return { 'x-api-key': API_KEY, 'content-type': 'application/json', ...extra };
+  return { 'content-type': 'application/json', ...extra };
 }
 
 function createDataSourceBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -168,7 +167,7 @@ function classifySignal(
         action_type: 'pricing',
         confidence_level: 'high',
         key_facts: ['Pro plan price up 15%', 'Effective next quarter'],
-        llm_model_used: 'opencode/deepseek-v4-flash-free',
+        llm_model_used: 'openrouter/mistralai/mistral-7b-instruct:free',
         ...overrides,
       },
     })
@@ -245,31 +244,6 @@ describe('health', () => {
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ status: 'ok' });
-  });
-});
-
-describe('auth (X-API-Key)', () => {
-  const URL = '/v1/organizations/550e8400-e29b-41d4-a716-446655440000/data-sources';
-
-  it('rejects /v1 requests without a key (401 unauthorized)', async () => {
-    const res = await app.inject({ method: 'GET', url: URL });
-    expect(res.statusCode).toBe(401);
-    expect(res.json()).toMatchObject({ error: 'unauthorized' });
-  });
-
-  it('rejects /v1 requests with a wrong key (401 unauthorized)', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: URL,
-      headers: { 'x-api-key': 'wrong-key' },
-    });
-    expect(res.statusCode).toBe(401);
-    expect(res.json()).toEqual({ error: 'unauthorized', message: expect.any(String) });
-  });
-
-  it('accepts /v1 requests with the configured key', async () => {
-    const res = await app.inject({ method: 'GET', url: URL, headers: headers() });
-    expect(res.statusCode).toBe(200);
   });
 });
 
@@ -413,7 +387,7 @@ describe('data sources', () => {
     const del = await app.inject({
       method: 'DELETE',
       url: `/v1/data-sources/${created.body.id}`,
-      headers: { 'x-api-key': API_KEY },
+      headers: {},
     });
     expect(del.statusCode).toBe(204);
     // Spec §1 + repo contract: DELETE is a soft remove (is_active = false)
@@ -458,7 +432,7 @@ describe('data sources', () => {
     const marked = await app.inject({
       method: 'POST',
       url: `/v1/data-sources/${due.id}/mark-collected`,
-      headers: { 'x-api-key': API_KEY },
+      headers: {},
     });
     expect(marked.statusCode).toBe(204);
 
@@ -606,7 +580,7 @@ describe('signals lifecycle (classify -> score -> route)', () => {
     expect(body.action_type).toBe('pricing');
     expect(body.confidence_level).toBe('high');
     expect(body.key_facts).toHaveLength(2);
-    expect(body.llm_model_used).toBe('opencode/deepseek-v4-flash-free');
+    expect(body.llm_model_used).toBe('openrouter/mistralai/mistral-7b-instruct:free');
     expect(body.classified_at).not.toBeNull();
     // Placeholder values per repo contract (overwritten by score/route stages)
     expect(body.significance_score).toBe(1);

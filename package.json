@@ -21,13 +21,11 @@
     "worker:score": "tsx src/workers/scorer.worker.ts",
     "worker:route": "tsx src/workers/router.worker.ts",
     "worker:battlecard": "tsx src/workers/battlecard.worker.ts",
-    "worker:slack": "tsx src/integrations/slack-standalone.ts",
     "engine": "tsx scripts/run-engine.mts",
     "scraper:up": "docker compose up -d scraper",
     "scraper:build": "docker build -t ase-scraper ./scraper"
   },
   "dependencies": {
-    "@slack/bolt": "^5.0.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.0.0",
     "pg": "^8.13.1",

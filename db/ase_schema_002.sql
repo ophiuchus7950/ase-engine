@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- User-configurable alert rules. `triggers` holds the match criteria
 -- (min_score, categories, competitor_ids, keywords); `channels` holds
--- delivery targets ({type: slack|email|webhook, target}); `routing_override`
+-- delivery targets ({type: email|webhook, target}); `routing_override`
 -- lets a matching rule escalate routing (e.g. force signal_card).
 CREATE TABLE IF NOT EXISTS alert_rules (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     rule_id         UUID REFERENCES alert_rules(id) ON DELETE SET NULL,
     title           TEXT NOT NULL,
     body            TEXT NOT NULL,
-    channel         TEXT NOT NULL DEFAULT 'in_app',  -- in_app | slack | email | webhook
+    channel         TEXT NOT NULL DEFAULT 'in_app',  -- in_app | email | webhook
     status          TEXT NOT NULL DEFAULT 'delivered',  -- delivered | failed | pending
     read_at         TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()

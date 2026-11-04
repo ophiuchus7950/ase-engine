@@ -26,10 +26,8 @@ import type {
   ScoreRequest,
   Signal,
   SignalDetail,
-  SlackSettings,
   UpdateAlertRuleRequest,
   UpdateDataSourceRequest,
-  UpdateSlackSettingsRequest,
 } from '../../types/domain';
 import type {
   AlertRuleWire,
@@ -49,10 +47,8 @@ import type {
   ScoreBody,
   SignalDetailWire,
   SignalWire,
-  SlackSettingsWire,
   UpdateAlertRuleBody,
   UpdateDataSourceBody,
-  UpdateSlackSettingsBody,
   UserWire,
 } from './schemas';
 
@@ -304,11 +300,6 @@ export function notificationToWire(n: Notification): NotificationWire {
     status: n.status,
     read_at: n.readAt,
     created_at: n.createdAt,
-    channel_target: n.channelTarget,
-    slack_ts: n.slackTs,
-    permalink: n.permalink,
-    delivered_at: n.deliveredAt,
-    error: n.error,
   };
 }
 
@@ -345,38 +336,5 @@ export function battlecardVersionToWire(v: BattlecardVersion): BattlecardVersion
     source_signal_count: v.sourceSignalCount,
     triggered_by_signal_id: v.triggeredBySignalId,
     generated_at: v.generatedAt,
-  };
-}
-
-export function updateSlackSettingsToDomain(
-  body: UpdateSlackSettingsBody,
-): UpdateSlackSettingsRequest {
-  return {
-    botToken: body.bot_token,
-    appToken: body.app_token,
-    signingSecret: body.signing_secret,
-    defaultChannel: body.default_channel,
-    webAppUrl: body.web_app_url,
-  };
-}
-
-/** Mask a secret for display — show only the last 4 chars when non-empty. */
-function maskSecret(value: string): string | null {
-  if (value.length === 0) return null;
-  const visible = value.slice(-4);
-  return `••••${visible}`;
-}
-
-/** GET wire — tokens always masked; never exposes the full token. */
-export function slackSettingsToWire(s: SlackSettings): SlackSettingsWire {
-  return {
-    organization_id: s.organizationId,
-    configured: s.botToken.length > 0 && s.appToken.length > 0,
-    bot_token_masked: maskSecret(s.botToken),
-    app_token_configured: s.appToken.length > 0,
-    signing_secret_configured: s.signingSecret.length > 0,
-    default_channel: s.defaultChannel,
-    web_app_url: s.webAppUrl,
-    updated_at: s.updatedAt,
   };
 }

@@ -11,7 +11,6 @@
 
 import { useSyncExternalStore } from 'react';
 import {
-  clearSession,
   createAlertRule,
   createCompetitor as apiCreateCompetitor,
   deleteAlertRule,
@@ -24,12 +23,8 @@ import {
   fetchSignals,
   fetchSignalsPage,
   fetchUnreadCount,
-  getSession,
-  login as apiLogin,
   markAllNotificationsRead,
   markNotificationRead,
-  registerAccount as apiRegister,
-  setSession,
   setSignalBookmarked,
   updateAlertRule,
   updateBattlecard,
@@ -40,7 +35,6 @@ import type {
   BattlecardWire,
   CreateAlertRuleBody,
   SignalListQuery,
-  UserWire,
 } from '../api/client';
 import {
   deriveActivity,
@@ -60,10 +54,6 @@ import {
 } from './mock';
 import type { AseData, BattlecardVersionRow, RuleDraft } from '../types/design';
 
-export { clearSession, getSession, setSession };
-
-const initialSession = getSession();
-
 let data: AseData = {
   signals: SIGNALS,
   activitySignals: [],
@@ -76,8 +66,7 @@ let data: AseData = {
   rules: ALERT_RULES,
   notifications: NOTIFICATIONS,
   unreadCount: UNREAD_COUNT,
-  user: initialSession?.user ?? null,
-  session: initialSession,
+  user: null,
   live: false,
   loading: false,
   lastSync: null,
@@ -246,18 +235,14 @@ export async function refreshNotifications(): Promise<void> {
   }
 }
 
-/** Re-validate the stored session against the backend and refresh the user. */
-export async function refreshSession(): Promise<void> {
-  const session = getSession();
-  if (!session) return;
+/** Load the local identity (no-auth mode) and refresh the user slice. */
+export async function refreshUser(): Promise<void> {
   try {
     const { user } = await fetchMe();
-    const refreshed = { token: session.token, user };
-    setSession(refreshed);
-    data = { ...data, session: refreshed, user };
+    data = { ...data, user };
     emit();
   } catch {
-    // Backend unreachable or token expired — keep the stored session.
+    // Backend unreachable — keep whatever identity was showing.
   }
 }
 
@@ -274,44 +259,12 @@ export async function refresh(): Promise<void> {
   if (data.activitySignals.length === 0) await loadActivitySignals({ limit: 50 });
   await refreshRules();
   await refreshNotifications();
-  await refreshSession();
+  await refreshUser();
   data = {
     ...data,
     loading: false,
     lastSync: data.live ? new Date().toISOString() : data.lastSync,
   };
-  emit();
-}
-
-// ---------------------------------------------------------------------------
-// Session / auth — persist the Bearer token + user via the client, and keep
-// the in-memory snapshot in sync so the sidebar can render the user.
-// ---------------------------------------------------------------------------
-
-/** Register the first account and persist the returned session. */
-export async function register(name: string, password: string): Promise<UserWire> {
-  const res = await apiRegister(name, password);
-  const session = { token: res.token, user: res.user };
-  setSession(session);
-  data = { ...data, session, user: res.user };
-  emit();
-  return res.user;
-}
-
-/** Log in and persist the returned session. */
-export async function login(name: string, password: string): Promise<UserWire> {
-  const res = await apiLogin(name, password);
-  const session = { token: res.token, user: res.user };
-  setSession(session);
-  data = { ...data, session, user: res.user };
-  emit();
-  return res.user;
-}
-
-/** Log out locally: clears the persisted token and the in-memory session. */
-export function logout(): void {
-  clearSession();
-  data = { ...data, session: null, user: null };
   emit();
 }
 

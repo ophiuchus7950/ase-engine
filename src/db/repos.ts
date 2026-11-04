@@ -16,7 +16,6 @@ import type {
   RoutingDecision,
   Signal,
   SignalDetail,
-  SlackSettings,
   SourceType,
 } from '../types/domain';
 import type {
@@ -30,7 +29,6 @@ import type {
   RawSignalRepo,
   Repos,
   SignalRepo,
-  SlackSettingsRepo,
   UserRepo,
 } from './repo-types';
 
@@ -269,27 +267,12 @@ interface NotificationRow {
   status: 'delivered' | 'failed' | 'pending';
   read_at: Date | null;
   created_at: Date;
-  channel_target: string | null;
-  slack_ts: string | null;
-  permalink: string | null;
-  delivered_at: Date | null;
-  error: string | null;
 }
 
 interface BattlecardRow {
   competitor_id: string;
   content: unknown; // JSONB
   generated_at: Date;
-  updated_at: Date;
-}
-
-interface SlackSettingsRow {
-  organization_id: string;
-  bot_token: string;
-  app_token: string;
-  signing_secret: string;
-  default_channel: string;
-  web_app_url: string;
   updated_at: Date;
 }
 
@@ -371,23 +354,6 @@ function toNotification(row: NotificationRow) {
     status: row.status,
     readAt: toIso(row.read_at),
     createdAt: toIsoRequired(row.created_at),
-    channelTarget: row.channel_target,
-    slackTs: row.slack_ts,
-    permalink: row.permalink,
-    deliveredAt: toIso(row.delivered_at),
-    error: row.error,
-  };
-}
-
-function toSlackSettings(row: SlackSettingsRow): SlackSettings {
-  return {
-    organizationId: row.organization_id,
-    botToken: row.bot_token,
-    appToken: row.app_token,
-    signingSecret: row.signing_secret,
-    defaultChannel: row.default_channel,
-    webAppUrl: row.web_app_url,
-    updatedAt: toIsoRequired(row.updated_at),
   };
 }
 
@@ -1033,9 +999,8 @@ export function createRepos(pool: Pool): Repos {
       guard('notifications.create', async () => {
         const { rows } = await pool.query<NotificationRow>(
           `INSERT INTO notifications (
-             organization_id, signal_id, rule_id, title, body, channel, status,
-             channel_target, slack_ts, permalink, delivered_at, error
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             organization_id, signal_id, rule_id, title, body, channel, status
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7)
            RETURNING *`,
           [
             input.organizationId,
@@ -1045,11 +1010,6 @@ export function createRepos(pool: Pool): Repos {
             input.body,
             input.channel,
             input.status,
-            input.channelTarget ?? null,
-            input.slackTs ?? null,
-            input.permalink ?? null,
-            input.deliveredAt ?? null,
-            input.error ?? null,
           ],
         );
         return toNotification(rows[0]!);
@@ -1092,49 +1052,6 @@ export function createRepos(pool: Pool): Repos {
           `UPDATE notifications SET read_at = now() WHERE organization_id = $1 AND read_at IS NULL`,
           [organizationId],
         );
-      }),
-
-    markDelivered: (id, outcome) =>
-      guard('notifications.markDelivered', async () => {
-        const { rows } = await pool.query<NotificationRow>(
-          `UPDATE notifications SET
-             slack_ts = $2,
-             permalink = $3,
-             delivered_at = $4,
-             status = $5,
-             error = $6
-           WHERE id = $1
-           RETURNING *`,
-          [
-            id,
-            outcome.slackTs,
-            outcome.permalink,
-            outcome.deliveredAt,
-            outcome.status,
-            outcome.error ?? null,
-          ],
-        );
-        return rows[0] === undefined ? null : toNotification(rows[0]!);
-      }),
-
-    countDeliveredForOrgToday: (organizationId, now) =>
-      guard('notifications.countDeliveredForOrgToday', async () => {
-        // Count Slack Signal Cards delivered today: a delivered notification
-        // whose linked signal is routed signal_card (so low-priority slack
-        // pushes on weekly_digest/archive signals can't consume the cap).
-        const { rows } = await pool.query<{ count: string }>(
-          `SELECT COUNT(*)::text AS count FROM notifications n
-           WHERE n.organization_id = $1
-             AND n.channel = 'slack'
-             AND n.status = 'delivered'
-             AND n.delivered_at::date = $2::date
-             AND EXISTS (
-               SELECT 1 FROM signals s
-               WHERE s.id = n.signal_id AND s.routing_decision = 'signal_card'
-             )`,
-          [organizationId, now],
-        );
-        return Number(rows[0]?.count ?? 0);
       }),
   };
 
@@ -1252,47 +1169,6 @@ export function createRepos(pool: Pool): Repos {
       }),
   };
 
-  const slackSettings: SlackSettingsRepo = {
-    get: (organizationId) =>
-      guard('slackSettings.get', async () => {
-        const { rows } = await pool.query<SlackSettingsRow>(
-          `SELECT organization_id, bot_token, app_token, signing_secret,
-                  default_channel, web_app_url, updated_at
-           FROM slack_settings WHERE organization_id = $1`,
-          [organizationId],
-        );
-        return rows[0] === undefined ? null : toSlackSettings(rows[0]);
-      }),
-
-    upsert: (organizationId, req, now) =>
-      guard('slackSettings.upsert', async () => {
-        const { rows } = await pool.query<SlackSettingsRow>(
-          `INSERT INTO slack_settings
-             (organization_id, bot_token, app_token, signing_secret, default_channel, web_app_url, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (organization_id) DO UPDATE SET
-             bot_token = EXCLUDED.bot_token,
-             app_token = EXCLUDED.app_token,
-             signing_secret = EXCLUDED.signing_secret,
-             default_channel = EXCLUDED.default_channel,
-             web_app_url = EXCLUDED.web_app_url,
-             updated_at = EXCLUDED.updated_at
-           RETURNING organization_id, bot_token, app_token, signing_secret,
-                     default_channel, web_app_url, updated_at`,
-          [
-            organizationId,
-            req.botToken ?? '',
-            req.appToken ?? '',
-            req.signingSecret ?? '',
-            req.defaultChannel ?? '#ase-alerts',
-            req.webAppUrl ?? 'http://localhost:5173',
-            now,
-          ],
-        );
-        return toSlackSettings(rows[0]!);
-      }),
-  };
-
   const competitors: CompetitorRepo = {
     create: (organizationId, name) =>
       guard('competitors.create', async () => {
@@ -1386,6 +1262,5 @@ export function createRepos(pool: Pool): Repos {
     battlecards,
     competitors,
     competitorProfiles,
-    slackSettings,
   };
 }

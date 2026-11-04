@@ -9,21 +9,16 @@
  *                routing decision is escalated to it (that's what "rules
  *                affect routing" means in the single-user MVP).
  *   3. NOTIFY  — one in-app notification (bell) per rule, plus real delivery:
- *                webhook targets get an HTTP POST; slack targets with a
- *                webhook URL get an HTTP POST; email targets are recorded in
- *                the bell (no SMTP in the MVP).
+ *                webhook targets get an HTTP POST; email targets are recorded
+ *                in the bell (no SMTP in the MVP).
  *
  * Delivery is best-effort: a failed webhook POST still leaves the in-app
  * notification with status 'failed' so the user can see it in the bell.
  */
 import type { Repos } from '../../db/repo-types';
 import type { AlertRule, SignalDetail } from '../../types/domain';
-import { postSlackAlert } from '../../integrations/slack';
 
 const WEBHOOK_TIMEOUT_MS = 5_000;
-
-/** PMM daily cap: at most this many Slack Signal Cards per org per calendar day. */
-export const SLACK_DAILY_CAP = 3;
 
 export interface RuleEvaluationResult {
   rule: AlertRule;
@@ -59,12 +54,10 @@ function ruleMatches(rule: AlertRule, signal: SignalDetail): boolean {
 }
 
 /**
- * Deliver a rule's channels. Returns the delivered/failed status per channel.
- * webhook targets get a real HTTP POST; email targets are recorded in the
- * bell (in-app) — no SMTP transport in the MVP. Slack targets (channel name or
- * id) are pushed as Block Kit Signal Cards via the Slack module (Workstream B),
- * subject to the PMM daily cap for `signal_card` deliveries. Delivery is
- * best-effort: failures are recorded on the notification, never thrown.
+ * Deliver a rule's channels. webhook targets get a real HTTP POST; email
+ * targets are recorded in the bell (in-app) — no SMTP transport in the MVP.
+ * Delivery is best-effort: failures are recorded on the notification, never
+ * thrown.
  */
 async function deliverChannels(repos: Repos, rule: AlertRule, signal: SignalDetail): Promise<void> {
   for (const channel of rule.channels) {
@@ -92,48 +85,8 @@ async function deliverChannels(repos: Repos, rule: AlertRule, signal: SignalDeta
       continue;
     }
 
-    // Slack targets (channel name or id): push a Block Kit Signal Card.
-    if (channel.type === 'slack') {
-      const notification = await repos.notifications.create({
-        organizationId: signal.organizationId,
-        signalId: signal.id,
-        ruleId: rule.id,
-        title: `Alert: ${rule.name}`,
-        body: `[${signal.competitorName}] ${signal.keyFacts[0] ?? signal.rawText.slice(0, 140)}`,
-        channel: 'slack',
-        status: 'pending',
-        channelTarget: channel.target,
-      });
-
-      // PMM daily cap: only enforced for signal_card Slack deliveries. Once the
-      // org has already pushed N Slack Signal Cards today, suppress the extra
-      // push — the signal stays a signal_card (so its battlecard still updates
-      // and it remains visible in the product), but no Slack message is sent
-      // and a 'buffered' record is logged so it's visible in the bell.
-      // (Never rewrite the signal's routing decision: that would destroy the
-      // high-priority classification and silently starve the battlecard.)
-      if (signal.routingDecision === 'signal_card') {
-        const deliveredToday = await repos.notifications.countDeliveredForOrgToday(
-          signal.organizationId,
-          new Date(),
-        );
-        if (deliveredToday >= SLACK_DAILY_CAP) {
-          await repos.notifications.markDelivered(notification.id, {
-            slackTs: '',
-            permalink: '',
-            deliveredAt: new Date().toISOString(),
-            status: 'failed',
-            error: 'daily_cap_reached',
-          });
-          continue;
-        }
-      }
-
-      await postSlackAlert(notification.id, rule, signal, channel.target, { repos });
-      continue;
-    }
-
-    // Remaining (email, non-URL slack/other): bell-only, no outbound transport.
+    // Remaining (email and other non-URL targets): bell-only, no outbound
+    // transport.
     await repos.notifications.create({
       organizationId: signal.organizationId,
       signalId: signal.id,

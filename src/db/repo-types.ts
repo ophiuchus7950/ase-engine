@@ -22,11 +22,9 @@ import type {
   ScoreRequest,
   Signal,
   SignalDetail,
-  SlackSettings,
   SourceType,
   UpdateAlertRuleRequest,
   UpdateDataSourceRequest,
-  UpdateSlackSettingsRequest,
   User,
 } from '../types/domain';
 
@@ -161,27 +159,6 @@ export interface NotificationRepo {
   countUnread(organizationId: string): Promise<number>;
   markRead(id: string): Promise<boolean>;
   markAllRead(organizationId: string): Promise<void>;
-  /**
-   * Record the outbound Slack delivery outcome on a notification
-   * (schema 003): sets slack_ts / permalink / delivered_at, marks the status
-   * (delivered or failed) explicitly, and stores an optional error message.
-   */
-  markDelivered(
-    id: string,
-    outcome: {
-      slackTs: string;
-      permalink: string;
-      deliveredAt: string;
-      status: 'delivered' | 'failed';
-      error?: string | null;
-    },
-  ): Promise<Notification | null>;
-  /**
-   * Count Slack Signal Cards already delivered for an org today (daily cap,
-   * schema 003): channel='slack', status='delivered', delivered_at on the same
-   * calendar day as `now`.
-   */
-  countDeliveredForOrgToday(organizationId: string, now: Date): Promise<number>;
 }
 
 export interface NotificationInput {
@@ -192,12 +169,6 @@ export interface NotificationInput {
   body: string;
   channel: string;
   status: 'delivered' | 'failed' | 'pending';
-  /** Workstream B — Slack delivery log (schema 003). */
-  channelTarget?: string | null;
-  slackTs?: string | null;
-  permalink?: string | null;
-  deliveredAt?: string | null;
-  error?: string | null;
 }
 
 export interface BattlecardRepo {
@@ -239,17 +210,6 @@ export interface CompetitorProfileRepo {
   listProfiles(organizationId: string): Promise<CompetitorProfile[]>;
 }
 
-export interface SlackSettingsRepo {
-  /** Current per-org Slack config, or null when no row exists. */
-  get(organizationId: string): Promise<SlackSettings | null>;
-  /** Insert-or-update the per-org Slack config (schema 003). Returns the saved row. */
-  upsert(
-    organizationId: string,
-    req: UpdateSlackSettingsRequest,
-    now: Date,
-  ): Promise<SlackSettings>;
-}
-
 export interface Repos {
   dataSources: DataSourceRepo;
   rawSignals: RawSignalRepo;
@@ -260,7 +220,6 @@ export interface Repos {
   battlecards: BattlecardRepo;
   competitors: CompetitorRepo;
   competitorProfiles: CompetitorProfileRepo;
-  slackSettings: SlackSettingsRepo;
 }
 
 /** Factory type — implemented in src/db/repos.ts as `createRepos(pool)`. Pool-injectable for test isolation. */

@@ -17,11 +17,11 @@ import { ApiClientError } from './api-client-error';
 export { ApiClientError } from './api-client-error';
 
 /**
- * Internal API client used by all four workers (ase_api_spec.md).
+ * Internal API client used by all workers (ase_api_spec.md).
  * Wire is snake_case; this module converts at the boundary (standards §2):
  * request payloads are snake_case wire objects, responses are mapped to the
- * camelCase domain types. 15s timeout, X-API-Key auth, typed ApiClientError
- * carrying the status + {error, message} envelope on non-2xx.
+ * camelCase domain types. 15s timeout, typed ApiClientError carrying the
+ * status + {error, message} envelope on non-2xx.
  */
 
 // ---------------------------------------------------------------------------
@@ -234,11 +234,8 @@ async function buildError(
 export class ApiClient {
   private readonly baseUrl: string;
 
-  private readonly apiKey: string;
-
-  constructor(baseUrl: string, apiKey: string) {
+  constructor(baseUrl: string) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
-    this.apiKey = apiKey;
   }
 
   /** Scheduler queue: data sources due for collection. */
@@ -363,7 +360,6 @@ export class ApiClient {
       response = await fetch(`${this.baseUrl}${path}`, {
         method,
         headers: {
-          'X-API-Key': this.apiKey,
           ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,

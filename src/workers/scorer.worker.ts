@@ -13,7 +13,7 @@ import { runWorkerLoop } from './worker-utils';
  * only context-aware factor today (collected_at vs now).
  */
 
-const api = new ApiClient(config.API_BASE_URL, config.ASE_API_KEY);
+const api = new ApiClient(config.API_BASE_URL);
 
 const MVP_CONTEXT = {
   icpMatch: false,

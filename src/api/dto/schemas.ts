@@ -211,7 +211,7 @@ export const AlertRuleTriggersSchema = z
   .optional();
 
 export const AlertRuleChannelSchema = z.object({
-  type: z.enum(['slack', 'email', 'webhook']),
+  type: z.enum(['email', 'webhook']),
   target: z.string().min(1),
 });
 
@@ -387,11 +387,6 @@ export const NotificationWireSchema = z.object({
   status: z.enum(['delivered', 'failed', 'pending']),
   read_at: z.string().nullable(),
   created_at: z.string(),
-  channel_target: z.string().nullable(),
-  slack_ts: z.string().nullable(),
-  permalink: z.string().nullable(),
-  delivered_at: z.string().nullable(),
-  error: z.string().nullable(),
 });
 export type NotificationWire = z.infer<typeof NotificationWireSchema>;
 
@@ -442,30 +437,3 @@ export const BattlecardVersionWireSchema = z.object({
   generated_at: z.string(),
 });
 export type BattlecardVersionWire = z.infer<typeof BattlecardVersionWireSchema>;
-
-/** PUT /v1/settings/slack body — partial; empty string clears a field. */
-export const UpdateSlackSettingsBodySchema = z
-  .object({
-    bot_token: z.string().max(200).optional(),
-    app_token: z.string().max(200).optional(),
-    signing_secret: z.string().max(200).optional(),
-    default_channel: z.string().max(200).optional(),
-    web_app_url: z.string().max(500).optional(),
-  })
-  .refine((body) => Object.keys(body).length > 0, {
-    message: 'At least one field is required',
-  });
-export type UpdateSlackSettingsBody = z.infer<typeof UpdateSlackSettingsBodySchema>;
-
-/** GET /v1/settings/slack — tokens always masked; only configured + a preview. */
-export const SlackSettingsWireSchema = z.object({
-  organization_id: UuidSchema,
-  configured: z.boolean(),
-  bot_token_masked: z.string().nullable(),
-  app_token_configured: z.boolean(),
-  signing_secret_configured: z.boolean(),
-  default_channel: z.string(),
-  web_app_url: z.string(),
-  updated_at: z.string(),
-});
-export type SlackSettingsWire = z.infer<typeof SlackSettingsWireSchema>;

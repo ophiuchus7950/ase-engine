@@ -9,7 +9,7 @@ import { runWorkerLoop } from './worker-utils';
  * (ase_api_spec.md §3).
  */
 
-const api = new ApiClient(config.API_BASE_URL, config.ASE_API_KEY);
+const api = new ApiClient(config.API_BASE_URL);
 
 async function runOnce(): Promise<void> {
   const signals = await api.listPendingRouting(config.WORKER_BATCH_SIZE);

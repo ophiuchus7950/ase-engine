@@ -93,7 +93,7 @@ describe('SignalRepo', () => {
       'Enterprise plan now $99 per user per month, up from $79',
       'Annual billing discount removed',
     ]);
-    expect(signal.llmModelUsed).toBe('opencode/deepseek-v4-flash-free');
+    expect(signal.llmModelUsed).toBe('openrouter/mistralai/mistral-7b-instruct:free');
     expect(signal.classifiedAt).toBe(now.toISOString());
     // Placeholders until updateScore/updateRouting run (schema NOT NULL quirk):
     expect(signal.significanceScore).toBe(1);

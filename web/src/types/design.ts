@@ -11,7 +11,6 @@ import type {
   AlertRuleChannelWire,
   AlertRuleWire,
   NotificationWire,
-  SessionState,
   UserWire,
 } from '../api/client';
 
@@ -49,23 +48,6 @@ export interface BattlecardVersionRow {
   summary: string;
   sections: { heading: string; bullets: string[] }[];
   sourceSignals: { id: string; title: string; score: number; sourceUrl: string | null }[];
-}
-
-/**
- * Delivery-log view for a NotificationWire. The store keeps notifications as
- * their wire shape (schema 002); this is the UI-facing extension for the
- * Slack/email/webhook delivery ledger surfaced in the Activity feed.
- */
-export interface NotificationLogRow {
-  channel: string;
-  status: 'delivered' | 'failed' | 'pending';
-  channelTarget?: string | null;
-  slackTs?: string | null;
-  permalink?: string | null;
-  deliveredAt?: string | null;
-  error?: string | null;
-  readAt: string | null;
-  createdAt: string;
 }
 
 export interface Signal {
@@ -151,10 +133,8 @@ export interface AseData {
   notifications: NotificationWire[];
   /** Unread notification count for the bell badge. */
   unreadCount: number;
-  /** Authenticated user (sidebar identity) — null when logged out. */
+  /** Local user identity (sidebar) — null until /me resolves. */
   user: UserWire | null;
-  /** Raw session (Bearer token + user) — null when logged out. */
-  session: SessionState | null;
   /** true once live engine data has been loaded (mock data shown until then) */
   live: boolean;
   loading: boolean;

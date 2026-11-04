@@ -36,12 +36,10 @@ rsync -a \
   ./ "$OUT_DIR/"
 
 # 2. Snapshot the run instructions into the package.
-if [ -f "/home/zephy/Documents/ase-engine-docs/HOW_TO_RUN.md" ]; then
-  cp "/home/zephy/Documents/ase-engine-docs/HOW_TO_RUN.md" "$OUT_DIR/HOW_TO_RUN.md"
-elif [ -f "HOW_TO_RUN.md" ]; then
-  cp "HOW_TO_RUN.md" "$OUT_DIR/HOW_TO_RUN.md"
+if [ -f "README.md" ]; then
+  cp "README.md" "$OUT_DIR/README.md"
 else
-  echo "[pkg] WARNING: no HOW_TO_RUN.md found; tester has no run instructions"
+  echo "[pkg] WARNING: no README.md found; tester has no run instructions"
 fi
 
 # 3. Archive.

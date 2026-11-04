@@ -1,6 +1,10 @@
 node_modules/
 dist/
 coverage/
+# Command Code local state
+.commandcode/
+# Packaging output from scripts/package.sh (source tarballs for testers)
+dist-pkg/
 .env
 *.log
 *.tsbuildinfo

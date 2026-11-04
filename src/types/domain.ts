@@ -197,8 +197,8 @@ export interface AlertRuleTriggers {
 }
 
 export interface AlertRuleChannel {
-  type: 'slack' | 'email' | 'webhook';
-  target: string; // slack: #channel-name; email: addr@example.com; webhook: https://...
+  type: 'email' | 'webhook';
+  target: string; // email: addr@example.com; webhook: https://...
 }
 
 export interface AlertRule {
@@ -245,12 +245,6 @@ export interface Notification {
   status: 'delivered' | 'failed' | 'pending';
   readAt: string | null;
   createdAt: string;
-  /** Workstream B — Slack delivery log (schema 003). */
-  channelTarget: string | null;
-  slackTs: string | null;
-  permalink: string | null;
-  deliveredAt: string | null;
-  error: string | null;
 }
 
 /** Battlecard document content (JSONB) — generated per competitor. */
@@ -290,35 +284,6 @@ export interface CompetitorProfile extends Competitor {
   signalCount: number;
   monitoringActive: boolean;
   sources: { id: string; sourceType: SourceType; targetUrl: string | null }[];
-}
-
-/** Per-org runtime Slack bot config (schema 003) — set from the UI, not just .env. */
-export interface SlackSettings {
-  organizationId: string;
-  botToken: string;
-  appToken: string;
-  signingSecret: string;
-  defaultChannel: string;
-  webAppUrl: string;
-  updatedAt: string;
-}
-
-/** What the client may update. Empty string clears the field. */
-export interface UpdateSlackSettingsRequest {
-  botToken?: string;
-  appToken?: string;
-  signingSecret?: string;
-  defaultChannel?: string;
-  webAppUrl?: string;
-}
-
-/** Build a SlackClient transport config from resolved settings (no secrets on the wire). */
-export interface SlackRuntimeConfig {
-  botToken: string;
-  appToken: string;
-  signingSecret: string;
-  defaultChannel: string;
-  webAppUrl: string;
 }
 
 // ---------------------------------------------------------------------------

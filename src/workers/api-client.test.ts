@@ -9,7 +9,6 @@ import { ApiClient, ApiClientError } from './api-client';
 interface CapturedRequest {
   method: string | undefined;
   url: string | undefined;
-  apiKey: string | undefined;
   body: string | null;
 }
 
@@ -35,7 +34,7 @@ const SIGNAL_DETAIL_WIRE = {
   action_type: 'funding',
   confidence_level: 'high',
   key_facts: ['raised 50M'],
-  llm_model_used: 'opencode/deepseek-v4-flash-free',
+  llm_model_used: 'openrouter/mistralai/mistral-7b-instruct:free',
   classified_at: '2026-07-30T09:02:00.000Z',
   score_recency: 0,
   score_source_authority: 1,
@@ -71,7 +70,6 @@ beforeAll(async () => {
       requests.push({
         method: req.method,
         url: req.url,
-        apiKey: typeof req.headers['x-api-key'] === 'string' ? req.headers['x-api-key'] : undefined,
         body: body.length > 0 ? body : null,
       });
 
@@ -133,16 +131,10 @@ afterAll(async () => {
 
 function makeClient(): ApiClient {
   requests.length = 0;
-  return new ApiClient(baseUrl, 'test-api-key');
+  return new ApiClient(baseUrl);
 }
 
 describe('ApiClient', () => {
-  it('sends the X-API-Key header on every request', async () => {
-    const client = makeClient();
-    await client.listUnclassified(10);
-    expect(requests[0]?.apiKey).toBe('test-api-key');
-  });
-
   it('listUnclassified maps snake_case wire rows to camelCase RawSignal', async () => {
     const client = makeClient();
     const [signal] = await client.listUnclassified(10);
@@ -206,7 +198,7 @@ describe('ApiClient', () => {
     try {
       const address = server2.address();
       if (address === null || typeof address === 'string') throw new Error('no port');
-      const client = new ApiClient(`http://127.0.0.1:${address.port}`, 'key');
+      const client = new ApiClient(`http://127.0.0.1:${address.port}`);
       const { created, signal } = await client.ingestRawSignal({
         organization_id: 'org-1',
         competitor_id: 'comp-1',
@@ -281,7 +273,7 @@ describe('ApiClient', () => {
       action_type: 'funding',
       confidence_level: 'high',
       key_facts: ['raised 50M'],
-      llm_model_used: 'opencode/deepseek-v4-flash-free',
+      llm_model_used: 'openrouter/mistralai/mistral-7b-instruct:free',
     });
     await client.markCollected('ds-1');
 
@@ -300,7 +292,7 @@ describe('ApiClient', () => {
     expect(JSON.parse(requests[2]?.body ?? '{}')).toMatchObject({
       action_type: 'funding',
       confidence_level: 'high',
-      llm_model_used: 'opencode/deepseek-v4-flash-free',
+      llm_model_used: 'openrouter/mistralai/mistral-7b-instruct:free',
     });
 
     expect(requests[3]?.url).toBe('/v1/data-sources/ds-1/mark-collected');
@@ -308,7 +300,7 @@ describe('ApiClient', () => {
   });
 
   it('rejects with ApiClientError carrying status + {error, message} on non-2xx', async () => {
-    const client = new ApiClient(baseUrl, 'test-api-key');
+    const client = new ApiClient(baseUrl);
     const promise = client.submitScore('err-422', {
       score_recency: 2,
       score_source_authority: 1,
@@ -327,7 +319,7 @@ describe('ApiClient', () => {
   });
 
   it('rejects with ApiClientError on network failure', async () => {
-    const client = new ApiClient('http://127.0.0.1:1', 'test-api-key');
+    const client = new ApiClient('http://127.0.0.1:1');
     await expect(client.listUnclassified(10)).rejects.toBeInstanceOf(ApiClientError);
   });
 });

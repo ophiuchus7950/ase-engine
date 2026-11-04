@@ -12,7 +12,7 @@ import { runWorkerLoop } from './worker-utils';
  * marks the source collected (ase_api_spec.md §1/§2).
  */
 
-const api = new ApiClient(config.API_BASE_URL, config.ASE_API_KEY);
+const api = new ApiClient(config.API_BASE_URL);
 
 /** content_hash = sha256(raw_text + ':' + competitor_id), hex (schema comment). */
 export function contentHash(rawText: string, competitorId: string): string {

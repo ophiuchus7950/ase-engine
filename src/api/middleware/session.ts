@@ -1,14 +1,13 @@
 /**
- * Rivela ASE — session auth middleware (schema 002).
+ * Rivela ASE — local-user resolution (no-auth local mode).
  *
- * OPTIONAL: attaches `request.user = { id, organizationId }` when a valid
- * `Authorization: Bearer <token>` header is present. Routes that need an
- * authenticated user call requireUser(request) themselves; all other /v1
- * routes stay protected by the shared X-API-Key (workers keep working).
+ * The engine is built to run on a personal machine: there is no login.
+ * Every request is attributed to the single local user created by
+ * `npm run seed` (or lazily on first request). User-scoped routes still call
+ * requireUser() to scope their queries to the local organization.
  */
 import type { FastifyRequest, onRequestHookHandler } from 'fastify';
-import { config } from '../../config';
-import { verifySessionToken } from '../auth/tokens';
+import type { Repos } from '../../db/repo-types';
 import { HttpError } from './error-handler';
 
 export interface RequestUser {
@@ -25,26 +24,28 @@ declare module 'fastify' {
   }
 }
 
-function extractBearer(request: FastifyRequest): string | null {
-  const header = request.headers.authorization;
-  if (typeof header !== 'string') return null;
-  const match = /^Bearer\s+(.+)$/i.exec(header);
-  return match === null ? null : (match[1] as string);
+/** Resolves the local user + org on every request. When the org is missing
+ * (fresh database before `npm run seed`), the request proceeds unscoped —
+ * user-scoped routes fail via requireUser(), worker routes keep working. */
+export function attachLocalUser(repos: Repos): onRequestHookHandler {
+  return async (request) => {
+    const organizationId = await repos.users.getDefaultOrganizationId();
+    if (organizationId === null) return;
+    const existing = await repos.users.findByName('local');
+    if (existing !== null) {
+      request.user = { id: existing.id, organizationId: existing.organizationId };
+      return;
+    }
+    const created = await repos.users.create(organizationId, 'local', '-');
+    request.user = { id: created.id, organizationId: created.organizationId };
+  };
 }
 
-export const attachUser: onRequestHookHandler = async (request) => {
-  const token = extractBearer(request);
-  if (token === null) return;
-  const payload = verifySessionToken(token, config.ASE_API_KEY);
-  if (payload === null) return; // invalid/expired — treated as anonymous
-  request.user = { id: payload.sub, organizationId: payload.org };
-};
-
-/** Route-level guard: throws 401 unless a valid session token was attached. */
+/** Route-level helper: the resolved local user (guaranteed by the hook). */
 export function requireUser(request: FastifyRequest): RequestUser {
   const { user } = request;
   if (user === undefined) {
-    throw new HttpError(401, 'unauthorized', 'Missing or invalid session token');
+    throw new HttpError(500, 'no_local_user', 'Local user not resolved');
   }
   return user;
 }

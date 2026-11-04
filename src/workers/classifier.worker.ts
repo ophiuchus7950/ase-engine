@@ -1,23 +1,24 @@
 import { config } from '../config';
 import { classifySignal } from '../pipeline/classification/classifier';
-import { runOpencode } from '../pipeline/llm/opencode-client';
+import { runLlm } from '../pipeline/llm/llm-client';
 import { ApiClient } from './api-client';
 import { runWorkerLoop } from './worker-utils';
 
 /**
  * Classification worker (Stage 1): pulls unclassified raw signals, runs each
- * through the opencode-CLI LLM classifier, and submits the validated output
- * (ase_api_spec.md §3). One failed signal never blocks the queue.
+ * through the LLM classifier (any OpenAI-compatible provider), and submits the
+ * validated output (ase_api_spec.md §3). One failed signal never blocks the
+ * queue.
  */
 
-const api = new ApiClient(config.API_BASE_URL, config.ASE_API_KEY);
+const api = new ApiClient(config.API_BASE_URL);
 
 async function runOnce(): Promise<void> {
   const rawSignals = await api.listUnclassified(config.WORKER_BATCH_SIZE);
   for (const rawSignal of rawSignals) {
     try {
       const result = await classifySignal(rawSignal.rawText, {
-        llm: (prompt) => runOpencode(prompt, { model: config.LLM_MODEL }),
+        llm: (prompt) => runLlm(prompt, { model: config.LLM_MODEL }),
         model: config.LLM_MODEL,
       });
 

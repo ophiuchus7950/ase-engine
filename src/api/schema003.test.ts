@@ -18,18 +18,17 @@ import { resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { config } from '../config';
 import { createRepos } from '../db/repos';
 import { buildApp } from './app';
-import type { AuthResponseWire, BattlecardVersionWire, SignalDetailWire } from './dto/schemas';
+import type { BattlecardVersionWire, SignalDetailWire } from './dto/schemas';
 
-const DB_USER = 'ase';
-const DB_PASSWORD = 'ase_dev_pw';
-const DB_HOST = 'localhost';
-const DB_PORT = 5432;
+// Derive the dedicated test database from DATABASE_URL (same contract as
+// src/db/test-db.ts), so `DATABASE_URL=... npm test` runs anywhere.
+const BASE_DATABASE_URL = config.DATABASE_URL.replace(/\/[^/]*$/, '');
 const TEST_DB_NAME = 'ase_test_003';
-const MAINTENANCE_URL = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/postgres`;
-const TEST_DB_URL = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${TEST_DB_NAME}`;
-const API_KEY = 'test-api-key';
+const MAINTENANCE_URL = `${BASE_DATABASE_URL}/postgres`;
+const TEST_DB_URL = `${BASE_DATABASE_URL}/${TEST_DB_NAME}`;
 
 const SCHEMA_SQL = readFileSync(resolve(process.cwd(), 'db/ase_schema.sql'), 'utf8');
 const SCHEMA_002_SQL = readFileSync(resolve(process.cwd(), 'db/ase_schema_002.sql'), 'utf8');
@@ -48,7 +47,7 @@ beforeAll(async () => {
   await pool.query(SCHEMA_SQL);
   await pool.query(SCHEMA_002_SQL);
   await pool.query(SCHEMA_003_SQL);
-  app = buildApp(createRepos(pool), { apiKey: API_KEY });
+  app = buildApp(createRepos(pool));
   await app.ready();
 });
 
@@ -69,12 +68,8 @@ afterAll(async () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function authHeaders(token: string): Record<string, string> {
-  return {
-    'x-api-key': API_KEY,
-    'content-type': 'application/json',
-    ...(token ? { authorization: `Bearer ${token}` } : {}),
-  };
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return { 'content-type': 'application/json', ...extra };
 }
 
 /** Seed an org via users (so getDefaultOrganizationId works) + a competitor. */
@@ -100,30 +95,22 @@ async function seedOrgAndCompetitor(
 }
 
 /**
- * Register a real user session (needed for user-scoped battlecard routes) and
- * seed a competitor in its org. Mirrors schema002.test.ts's register() helper.
+ * Seed the local org + a competitor. The local user is auto-created by the
+ * app's attachLocalUser hook on the first /v1 request.
  */
 async function registerSessionAndCompetitor(
   competitorName = 'Acme',
-): Promise<{ organizationId: string; competitorId: string; token: string }> {
+): Promise<{ organizationId: string; competitorId: string }> {
   const { rows } = await pool.query<{ id: string }>(
     'INSERT INTO organizations (name) VALUES ($1) RETURNING id',
     ['Test Org'],
   );
   const organizationId = rows[0]!.id;
-  const res = await app.inject({
-    method: 'POST',
-    url: '/v1/auth/register',
-    headers: authHeaders(''),
-    payload: { name: 'Test User', password: 'hunter2' },
-  });
-  expect(res.statusCode).toBe(200);
-  const session = res.json<AuthResponseWire>();
   const comp = await pool.query<{ id: string }>(
     'INSERT INTO competitors (organization_id, name) VALUES ($1, $2) RETURNING id',
     [organizationId, competitorName],
   );
-  return { organizationId, competitorId: comp.rows[0]!.id, token: session.token };
+  return { organizationId, competitorId: comp.rows[0]!.id };
 }
 
 /** Full pipeline seed through route (routes to signal_card, high significance). */
@@ -143,7 +130,7 @@ async function routeSignalCard(
   const classify = await app.inject({
     method: 'POST',
     url: `/v1/raw-signals/${rawSignalId}/classify`,
-    headers: authHeaders(''),
+    headers: authHeaders(),
     payload: {
       action_type: 'pricing',
       confidence_level: 'high',
@@ -156,7 +143,7 @@ async function routeSignalCard(
   await app.inject({
     method: 'POST',
     url: `/v1/signals/${signal.id}/score`,
-    headers: authHeaders(''),
+    headers: authHeaders(),
     payload: {
       score_recency: 5,
       score_source_authority: 5,
@@ -170,7 +157,7 @@ async function routeSignalCard(
   await app.inject({
     method: 'POST',
     url: `/v1/signals/${signal.id}/route`,
-    headers: authHeaders(''),
+    headers: authHeaders(),
     payload: {
       routing_decision: 'signal_card',
       battlecard_update_triggered: true,
@@ -181,7 +168,7 @@ async function routeSignalCard(
   const detail = await app.inject({
     method: 'GET',
     url: `/v1/signals/${signal.id}`,
-    headers: authHeaders(''),
+    headers: authHeaders(),
   });
   return detail.json<SignalDetailWire>();
 }
@@ -276,7 +263,7 @@ describe('battlecard reconcile endpoint', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/battlecards/reconcile',
-      headers: authHeaders(''),
+      headers: authHeaders(),
       payload: {},
     });
     expect(res.statusCode).toBe(200);
@@ -296,7 +283,7 @@ describe('battlecard reconcile endpoint', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/battlecards/reconcile',
-      headers: authHeaders(''),
+      headers: authHeaders(),
       payload: {},
     });
     expect(res.statusCode).toBe(200);
@@ -322,14 +309,14 @@ describe('battlecard reconcile endpoint', () => {
 
 describe('manual battlecard update', () => {
   it('POST update appends a manual version and keeps the current doc', async () => {
-    const { organizationId, competitorId, token } = await registerSessionAndCompetitor();
+    const { organizationId, competitorId } = await registerSessionAndCompetitor();
     await routeSignalCard(organizationId, competitorId);
     const before = await countVersions(competitorId);
 
     const res = await app.inject({
       method: 'POST',
       url: `/v1/competitors/${competitorId}/battlecard/update`,
-      headers: authHeaders(token),
+      headers: authHeaders(),
       payload: {},
     });
     expect(res.statusCode).toBe(200);
@@ -349,19 +336,19 @@ describe('manual battlecard update', () => {
 
 describe('battlecard history endpoint', () => {
   it('GET history lists versions newest-first', async () => {
-    const { organizationId, competitorId, token } = await registerSessionAndCompetitor();
+    const { organizationId, competitorId } = await registerSessionAndCompetitor();
     await routeSignalCard(organizationId, competitorId); // routing version
     await app.inject({
       method: 'POST',
       url: `/v1/competitors/${competitorId}/battlecard/update`,
-      headers: authHeaders(token),
+      headers: authHeaders(),
       payload: {},
     }); // manual version: newest
 
     const res = await app.inject({
       method: 'GET',
       url: `/v1/competitors/${competitorId}/battlecard/history`,
-      headers: authHeaders(token),
+      headers: authHeaders(),
     });
     expect(res.statusCode).toBe(200);
     const { items } = res.json<{

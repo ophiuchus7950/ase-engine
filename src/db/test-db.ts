@@ -133,7 +133,7 @@ export function classifyRequest(overrides: Partial<ClassifyRequest> = {}): Class
       'Enterprise plan now $99 per user per month, up from $79',
       'Annual billing discount removed',
     ],
-    llmModelUsed: 'opencode/deepseek-v4-flash-free',
+    llmModelUsed: 'openrouter/mistralai/mistral-7b-instruct:free',
     ...overrides,
   };
 }

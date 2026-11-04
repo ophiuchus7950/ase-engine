@@ -2,10 +2,8 @@
  * Rivela ASE web — API client for the engine backend.
  *
  * Speaks the wire contract from ase_api_spec.md + schema 002: snake_case DTOs,
- * shared X-API-Key auth on every /v1 request, optional Bearer session token for
- * user-scoped routes (auth, competitors, alert-rules, notifications,
- * battlecards), { error, message } envelope. In dev, Vite proxies /v1 to the
- * local engine (see vite.config.ts).
+ * { error, message } envelope. No auth — the engine is a local, single-user
+ * app. In dev, Vite proxies /v1 to the local engine (see vite.config.ts).
  */
 
 // ---------------------------------------------------------------------------
@@ -55,11 +53,6 @@ export interface UserWire {
   name: string;
 }
 
-export interface AuthResponseWire {
-  token: string;
-  user: UserWire;
-}
-
 export interface CompetitorWire {
   id: string;
   organization_id: string;
@@ -98,7 +91,7 @@ export interface AlertRuleTriggersWire {
 }
 
 export interface AlertRuleChannelWire {
-  type: 'slack' | 'email' | 'webhook';
+  type: 'email' | 'webhook';
   target: string;
 }
 
@@ -127,12 +120,6 @@ export interface NotificationWire {
   status: 'delivered' | 'failed' | 'pending';
   read_at: string | null;
   created_at: string;
-  /** Delivery-log ledger (schema 002 Slack delivery). */
-  channel_target?: string | null;
-  slack_ts?: string | null;
-  permalink?: string | null;
-  delivered_at?: string | null;
-  error?: string | null;
 }
 
 export interface BattlecardWire {
@@ -145,50 +132,13 @@ export interface BattlecardWire {
 }
 
 // ---------------------------------------------------------------------------
-// Session (schema 002): Bearer token + user, persisted in localStorage.
-// ---------------------------------------------------------------------------
-
-const SESSION_KEY = 'ase.session.v1';
-
-export interface SessionState {
-  token: string;
-  user: UserWire;
-}
-
-export function getSession(): SessionState | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as SessionState;
-    return parsed.token ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function setSession(session: SessionState): void {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-}
-
-export function clearSession(): void {
-  localStorage.removeItem(SESSION_KEY);
-}
-
-// ---------------------------------------------------------------------------
 // Request plumbing
 // ---------------------------------------------------------------------------
 
 const API_BASE = import.meta.env.VITE_ASE_API_BASE ?? '/v1';
-const API_KEY = import.meta.env.VITE_ASE_API_KEY ?? 'dev-internal-key';
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    'X-API-Key': API_KEY,
-    ...(init.headers as Record<string, string> | undefined),
-  };
-  const session = getSession();
-  if (session) headers.Authorization = `Bearer ${session.token}`;
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const res = await fetch(`${API_BASE}${path}`, init);
   if (!res.ok) {
     let message = `API ${res.status}`;
     try {
@@ -210,11 +160,9 @@ function jsonBody(payload: unknown): RequestInit {
   };
 }
 
-/** Health endpoint is open and mounted at /health (outside /v1). */
+/** Health endpoint is mounted at /health (outside /v1). */
 export async function fetchHealth(): Promise<{ status: string }> {
-  const res = await fetch(`${API_BASE.replace(/\/v1$/, '')}/health`, {
-    headers: { 'X-API-Key': API_KEY },
-  });
+  const res = await fetch(`${API_BASE.replace(/\/v1$/, '')}/health`);
   if (!res.ok) throw new Error(`API ${res.status}`);
   return res.json() as Promise<{ status: string }>;
 }
@@ -275,20 +223,12 @@ export async function setSignalBookmarked(
 }
 
 // ---------------------------------------------------------------------------
-// Auth (schema 002)
+// Local identity (no-auth mode): the engine resolves a single local user.
 // ---------------------------------------------------------------------------
 
-/** First-run registration — only valid while no account exists. */
-export async function registerAccount(name: string, password: string): Promise<AuthResponseWire> {
-  return request<AuthResponseWire>('/auth/register', jsonBody({ name, password }));
-}
-
-export async function login(name: string, password: string): Promise<AuthResponseWire> {
-  return request<AuthResponseWire>('/auth/login', jsonBody({ name, password }));
-}
-
+/** The local user + organization (replaces the old auth endpoints). */
 export async function fetchMe(): Promise<{ user: UserWire }> {
-  return request<{ user: UserWire }>('/auth/me');
+  return request<{ user: UserWire }>('/me');
 }
 
 // ---------------------------------------------------------------------------
@@ -446,42 +386,4 @@ export async function fetchBattlecardHistory(
   return request<PaginatedWire<BattlecardVersionWire>>(
     `/competitors/${competitorId}/battlecard/history${qs ? `?${qs}` : ''}`,
   );
-}
-
-// ---------------------------------------------------------------------------
-// Slack settings (schema 003) — runtime config set from the Monitoring UI.
-// Tokens are masked on read; never returned in plaintext by the API.
-// ---------------------------------------------------------------------------
-
-export interface SlackSettingsWire {
-  organization_id: string;
-  configured: boolean;
-  bot_token_masked: string | null;
-  app_token_configured: boolean;
-  signing_secret_configured: boolean;
-  default_channel: string;
-  web_app_url: string;
-  updated_at: string | null;
-}
-
-export interface UpdateSlackSettingsBody {
-  bot_token?: string;
-  app_token?: string;
-  signing_secret?: string;
-  default_channel?: string;
-  web_app_url?: string;
-}
-
-export async function fetchSlackSettings(): Promise<SlackSettingsWire> {
-  return request<SlackSettingsWire>('/settings/slack');
-}
-
-export async function updateSlackSettings(
-  body: UpdateSlackSettingsBody,
-): Promise<SlackSettingsWire> {
-  return request<SlackSettingsWire>('/settings/slack', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
 }

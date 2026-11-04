@@ -11,11 +11,11 @@ import { resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { config } from '../config';
 import { createRepos } from '../db/repos';
 import { buildApp } from './app';
 import type {
   AlertRuleWire,
-  AuthResponseWire,
   BattlecardWire,
   CompetitorProfileWire,
   CompetitorWire,
@@ -23,14 +23,12 @@ import type {
   SignalDetailWire,
 } from './dto/schemas';
 
-const DB_USER = 'ase';
-const DB_PASSWORD = 'ase_dev_pw';
-const DB_HOST = 'localhost';
-const DB_PORT = 5432;
+// Derive the dedicated test database from DATABASE_URL (same contract as
+// src/db/test-db.ts), so `DATABASE_URL=... npm test` runs anywhere.
+const BASE_DATABASE_URL = config.DATABASE_URL.replace(/\/[^/]*$/, '');
 const TEST_DB_NAME = 'ase_test_002';
-const MAINTENANCE_URL = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/postgres`;
-const TEST_DB_URL = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${TEST_DB_NAME}`;
-const API_KEY = 'test-api-key';
+const MAINTENANCE_URL = `${BASE_DATABASE_URL}/postgres`;
+const TEST_DB_URL = `${BASE_DATABASE_URL}/${TEST_DB_NAME}`;
 
 const SCHEMA_SQL = readFileSync(resolve(process.cwd(), 'db/ase_schema.sql'), 'utf8');
 const SCHEMA_002_SQL = readFileSync(resolve(process.cwd(), 'db/ase_schema_002.sql'), 'utf8');
@@ -49,7 +47,7 @@ beforeAll(async () => {
   await pool.query(SCHEMA_SQL);
   await pool.query(SCHEMA_002_SQL);
   await pool.query(SCHEMA_003_SQL);
-  app = buildApp(createRepos(pool), { apiKey: API_KEY });
+  app = buildApp(createRepos(pool));
   await app.ready();
 });
 
@@ -78,27 +76,18 @@ async function seedOrg(name = 'Test Org'): Promise<{ organizationId: string }> {
   return { organizationId: rows[0]!.id };
 }
 
-function authHeaders(token: string, extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    'x-api-key': API_KEY,
-    'content-type': 'application/json',
-    authorization: `Bearer ${token}`,
-    ...extra,
-  };
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return { 'content-type': 'application/json', ...extra };
 }
 
-async function register(token?: string): Promise<AuthResponseWire & { organizationId: string }> {
+/** Seed the local org. The local user is auto-created by the app's
+ * attachLocalUser hook on the first /v1 request. */
+async function register(): Promise<{ organizationId: string }> {
   const { rows } = await pool.query<{ id: string }>(
     'INSERT INTO organizations (name) VALUES ($1) RETURNING id',
     ['Test Org'],
   );
-  const res = await app.inject({
-    method: 'POST',
-    url: '/v1/auth/register',
-    headers: authHeaders(token ?? ''),
-    payload: { name: 'Test User', password: 'hunter2' },
-  });
-  return { ...res.json<AuthResponseWire>(), organizationId: rows[0]!.id };
+  return { organizationId: rows[0]!.id };
 }
 
 /** Full pipeline seed: org + competitor + raw signal + classify + score + route. */
@@ -124,7 +113,7 @@ async function seedRoutedSignal(
   const classify = await app.inject({
     method: 'POST',
     url: `/v1/raw-signals/${rawSignalId}/classify`,
-    headers: authHeaders(''),
+    headers: authHeaders(),
     payload: {
       action_type: overrides.actionType ?? 'pricing',
       confidence_level: 'high',
@@ -137,7 +126,7 @@ async function seedRoutedSignal(
   await app.inject({
     method: 'POST',
     url: `/v1/signals/${signal.id}/score`,
-    headers: authHeaders(''),
+    headers: authHeaders(),
     payload: {
       score_recency: 5,
       score_source_authority: 5,
@@ -151,7 +140,7 @@ async function seedRoutedSignal(
   await app.inject({
     method: 'POST',
     url: `/v1/signals/${signal.id}/route`,
-    headers: authHeaders(''),
+    headers: authHeaders(),
     payload: {
       routing_decision: 'signal_card',
       battlecard_update_triggered: true,
@@ -162,7 +151,7 @@ async function seedRoutedSignal(
   const detail = await app.inject({
     method: 'GET',
     url: `/v1/signals/${signal.id}`,
-    headers: authHeaders(''),
+    headers: authHeaders(),
   });
   return detail.json<SignalDetailWire>();
 }
@@ -180,99 +169,16 @@ function createRuleBody(overrides: Record<string, unknown> = {}): Record<string,
 }
 
 // ---------------------------------------------------------------------------
-// Auth
-// ---------------------------------------------------------------------------
-
-describe('auth', () => {
-  it('register works once (first-run), then closes registration', async () => {
-    // POST /auth/register picks getDefaultOrganizationId(), so an org must exist.
-    await pool.query('INSERT INTO organizations (name) VALUES ($1)', ['Test Org']);
-    const first = await app.inject({
-      method: 'POST',
-      url: '/v1/auth/register',
-      headers: authHeaders(''),
-      payload: { name: 'First User', password: 'hunter2' },
-    });
-    expect(first.statusCode).toBe(200);
-    const body = first.json<AuthResponseWire>();
-    expect(body.token.length).toBeGreaterThan(20);
-    expect(body.user.name).toBe('First User');
-
-    const second = await app.inject({
-      method: 'POST',
-      url: '/v1/auth/register',
-      headers: authHeaders(''),
-      payload: { name: 'Second User', password: 'hunter2' },
-    });
-    expect(second.statusCode).toBe(403);
-  });
-
-  it('login returns a token for valid credentials, 401 for invalid', async () => {
-    // POST /auth/register picks getDefaultOrganizationId(), so an org must exist.
-    await pool.query('INSERT INTO organizations (name) VALUES ($1)', ['Test Org']);
-    await app.inject({
-      method: 'POST',
-      url: '/v1/auth/register',
-      headers: authHeaders(''),
-      payload: { name: 'Login User', password: 'hunter2' },
-    });
-
-    const ok = await app.inject({
-      method: 'POST',
-      url: '/v1/auth/login',
-      headers: authHeaders(''),
-      payload: { name: 'Login User', password: 'hunter2' },
-    });
-    expect(ok.statusCode).toBe(200);
-    expect(ok.json<AuthResponseWire>().user.name).toBe('Login User');
-
-    const bad = await app.inject({
-      method: 'POST',
-      url: '/v1/auth/login',
-      headers: authHeaders(''),
-      payload: { name: 'Login User', password: 'wrong' },
-    });
-    expect(bad.statusCode).toBe(401);
-
-    const missing = await app.inject({
-      method: 'POST',
-      url: '/v1/auth/login',
-      headers: authHeaders(''),
-      payload: { name: 'Nobody', password: 'hunter2' },
-    });
-    expect(missing.statusCode).toBe(401);
-  });
-
-  it('GET /auth/me returns the session user; rejects requests without a token', async () => {
-    const session = await register();
-    const res = await app.inject({
-      method: 'GET',
-      url: '/v1/auth/me',
-      headers: authHeaders(session.token),
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json<{ user: { name: string } }>().user.name).toBe('Test User');
-
-    const anon = await app.inject({
-      method: 'GET',
-      url: '/v1/auth/me',
-      headers: authHeaders(''),
-    });
-    expect(anon.statusCode).toBe(401);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Competitors CRUD
 // ---------------------------------------------------------------------------
 
 describe('competitors', () => {
   it('POST /competitors creates the competitor + a data_source per website URL', async () => {
-    const session = await register();
+    await register();
     const res = await app.inject({
       method: 'POST',
       url: '/v1/competitors',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: {
         name: 'Globex',
         website_urls: ['https://globex.example.com/pricing'],
@@ -292,8 +198,7 @@ describe('competitors', () => {
   });
 
   it('GET /competitors returns profiles with signal counts and sources', async () => {
-    const session = await register();
-    const { organizationId } = session;
+    const { organizationId } = await register();
     const competitor = await pool.query<{ id: string }>(
       'INSERT INTO competitors (organization_id, name) VALUES ($1, $2) RETURNING id',
       [organizationId, 'Initech'],
@@ -308,7 +213,7 @@ describe('competitors', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/v1/competitors',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
     });
     expect(res.statusCode).toBe(200);
     const { items } = res.json<{ items: CompetitorProfileWire[] }>();
@@ -320,8 +225,7 @@ describe('competitors', () => {
   });
 
   it('PATCH + DELETE competitors respect ownership', async () => {
-    const session = await register();
-    const { organizationId } = session;
+    const { organizationId } = await register();
     const competitor = await pool.query<{ id: string }>(
       'INSERT INTO competitors (organization_id, name) VALUES ($1, $2) RETURNING id',
       [organizationId, 'Umbrella'],
@@ -331,7 +235,7 @@ describe('competitors', () => {
     const patched = await app.inject({
       method: 'PATCH',
       url: `/v1/competitors/${id}`,
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: { name: 'Umbrella Corp' },
     });
     expect(patched.statusCode).toBe(200);
@@ -340,7 +244,7 @@ describe('competitors', () => {
     const deleted = await app.inject({
       method: 'DELETE',
       url: `/v1/competitors/${id}`,
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: {},
     });
     expect(deleted.statusCode).toBe(200);
@@ -348,7 +252,7 @@ describe('competitors', () => {
     const gone = await app.inject({
       method: 'GET',
       url: '/v1/competitors',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
     });
     expect(gone.json<{ items: CompetitorWire[] }>().items).toHaveLength(0);
   });
@@ -360,12 +264,12 @@ describe('competitors', () => {
 
 describe('alert rules', () => {
   it('CRUD: create, list, toggle, update, delete', async () => {
-    const session = await register();
+    await register();
 
     const created = await app.inject({
       method: 'POST',
       url: '/v1/alert-rules',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: createRuleBody(),
     });
     expect(created.statusCode).toBe(200);
@@ -376,14 +280,14 @@ describe('alert rules', () => {
     const list = await app.inject({
       method: 'GET',
       url: '/v1/alert-rules',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
     });
     expect(list.json<{ items: AlertRuleWire[] }>().items).toHaveLength(1);
 
     const toggled = await app.inject({
       method: 'PATCH',
       url: `/v1/alert-rules/${rule.id}`,
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: { enabled: false, name: 'Pricing alerts v2' },
     });
     const updated = toggled.json<AlertRuleWire>();
@@ -393,15 +297,14 @@ describe('alert rules', () => {
     const deleted = await app.inject({
       method: 'DELETE',
       url: `/v1/alert-rules/${rule.id}`,
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: {},
     });
     expect(deleted.statusCode).toBe(200);
   });
 
   it('routing a matching signal fires the rule: fired_count + notification + override', async () => {
-    const session = await register();
-    const { organizationId } = session;
+    const { organizationId } = await register();
     const competitor = await pool.query<{ id: string }>(
       'INSERT INTO competitors (organization_id, name) VALUES ($1, $2) RETURNING id',
       [organizationId, 'Acme'],
@@ -412,7 +315,7 @@ describe('alert rules', () => {
     await app.inject({
       method: 'POST',
       url: '/v1/alert-rules',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: createRuleBody({
         triggers: { keywords: ['raised prices'] },
         channels: [{ type: 'email', target: 'me@example.com' }],
@@ -427,7 +330,7 @@ describe('alert rules', () => {
     const rules = await app.inject({
       method: 'GET',
       url: '/v1/alert-rules',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
     });
     const [rule] = rules.json<{ items: AlertRuleWire[] }>().items;
     expect(rule!.fired_count).toBe(1);
@@ -435,7 +338,7 @@ describe('alert rules', () => {
     const notifications = await app.inject({
       method: 'GET',
       url: '/v1/notifications',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
     });
     const { items } = notifications.json<{ items: NotificationWire[] }>();
     expect(items).toHaveLength(1);
@@ -445,8 +348,7 @@ describe('alert rules', () => {
   });
 
   it('routing_override escalates the stored routing decision', async () => {
-    const session = await register();
-    const { organizationId } = session;
+    const { organizationId } = await register();
     const competitor = await pool.query<{ id: string }>(
       'INSERT INTO competitors (organization_id, name) VALUES ($1, $2) RETURNING id',
       [organizationId, 'Acme'],
@@ -456,7 +358,7 @@ describe('alert rules', () => {
     await app.inject({
       method: 'POST',
       url: '/v1/alert-rules',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: createRuleBody({
         triggers: { min_score: 1 },
         routing_override: 'signal_card',
@@ -473,14 +375,13 @@ describe('alert rules', () => {
     const detail = await app.inject({
       method: 'GET',
       url: `/v1/signals/${signal.id}`,
-      headers: authHeaders(''),
+      headers: authHeaders(),
     });
     expect(detail.json<SignalDetailWire>().routing_decision).toBe('signal_card');
   });
 
   it('non-matching rules do not fire', async () => {
-    const session = await register();
-    const { organizationId } = session;
+    const { organizationId } = await register();
     const competitor = await pool.query<{ id: string }>(
       'INSERT INTO competitors (organization_id, name) VALUES ($1, $2) RETURNING id',
       [organizationId, 'Acme'],
@@ -488,7 +389,7 @@ describe('alert rules', () => {
     await app.inject({
       method: 'POST',
       url: '/v1/alert-rules',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: createRuleBody({
         triggers: { keywords: ['does-not-appear'] },
       }),
@@ -499,7 +400,7 @@ describe('alert rules', () => {
     const rules = await app.inject({
       method: 'GET',
       url: '/v1/alert-rules',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
     });
     expect(rules.json<{ items: AlertRuleWire[] }>().items[0]!.fired_count).toBe(0);
   });
@@ -511,8 +412,7 @@ describe('alert rules', () => {
 
 describe('notifications', () => {
   it('unread-count + mark-read + read-all flow', async () => {
-    const session = await register();
-    const { organizationId } = session;
+    const { organizationId } = await register();
     const competitor = await pool.query<{ id: string }>(
       'INSERT INTO competitors (organization_id, name) VALUES ($1, $2) RETURNING id',
       [organizationId, 'Acme'],
@@ -520,7 +420,7 @@ describe('notifications', () => {
     await app.inject({
       method: 'POST',
       url: '/v1/alert-rules',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: createRuleBody({ triggers: { min_score: 1 } }),
     });
     await seedRoutedSignal(organizationId, competitor.rows[0]!.id);
@@ -528,14 +428,14 @@ describe('notifications', () => {
     const unread = await app.inject({
       method: 'GET',
       url: '/v1/notifications/unread-count',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
     });
     expect(unread.json<{ count: number }>().count).toBe(1);
 
     const list = await app.inject({
       method: 'GET',
       url: '/v1/notifications',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
     });
     const { items } = list.json<{ items: NotificationWire[] }>();
     expect(items).toHaveLength(1);
@@ -544,7 +444,7 @@ describe('notifications', () => {
     const read = await app.inject({
       method: 'POST',
       url: `/v1/notifications/${items[0]!.id}/read`,
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: {},
     });
     expect(read.statusCode).toBe(200);
@@ -552,7 +452,7 @@ describe('notifications', () => {
     const unreadAfter = await app.inject({
       method: 'GET',
       url: '/v1/notifications/unread-count',
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
     });
     expect(unreadAfter.json<{ count: number }>().count).toBe(0);
   });
@@ -577,7 +477,7 @@ describe('bookmarks', () => {
     const on = await app.inject({
       method: 'POST',
       url: `/v1/signals/${signal.id}/bookmark`,
-      headers: authHeaders(''),
+      headers: authHeaders(),
       payload: { bookmarked: true },
     });
     expect(on.json<SignalDetailWire>().bookmarked).toBe(true);
@@ -585,14 +485,14 @@ describe('bookmarks', () => {
     const filtered = await app.inject({
       method: 'GET',
       url: '/v1/signals?bookmarked=true',
-      headers: authHeaders(''),
+      headers: authHeaders(),
     });
     expect(filtered.json<{ items: SignalDetailWire[] }>().items).toHaveLength(1);
 
     const off = await app.inject({
       method: 'POST',
       url: `/v1/signals/${signal.id}/bookmark`,
-      headers: authHeaders(''),
+      headers: authHeaders(),
       payload: { bookmarked: false },
     });
     expect(off.json<SignalDetailWire>().bookmarked).toBe(false);
@@ -605,8 +505,7 @@ describe('bookmarks', () => {
 
 describe('battlecards', () => {
   it('GET builds a battlecard from routed signals; POST /update regenerates', async () => {
-    const session = await register();
-    const { organizationId } = session;
+    const { organizationId } = await register();
     const competitor = await pool.query<{ id: string }>(
       'INSERT INTO competitors (organization_id, name) VALUES ($1, $2) RETURNING id',
       [organizationId, 'Acme'],
@@ -617,7 +516,7 @@ describe('battlecards', () => {
     const get = await app.inject({
       method: 'GET',
       url: `/v1/competitors/${competitorId}/battlecard`,
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
     });
     expect(get.statusCode).toBe(200);
     const battlecard = get.json<BattlecardWire>();
@@ -628,7 +527,7 @@ describe('battlecards', () => {
     const update = await app.inject({
       method: 'POST',
       url: `/v1/competitors/${competitorId}/battlecard/update`,
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
       payload: {},
     });
     expect(update.statusCode).toBe(200);
@@ -636,7 +535,7 @@ describe('battlecards', () => {
   });
 
   it('404 for a competitor in another org', async () => {
-    const session = await register();
+    await register();
     await seedOrg();
     const otherOrg = await pool.query<{ id: string }>(
       'INSERT INTO organizations (name) VALUES ($1) RETURNING id',
@@ -649,7 +548,7 @@ describe('battlecards', () => {
     const res = await app.inject({
       method: 'GET',
       url: `/v1/competitors/${competitor.rows[0]!.id}/battlecard`,
-      headers: authHeaders(session.token),
+      headers: authHeaders(),
     });
     expect(res.statusCode).toBe(404);
   });

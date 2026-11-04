@@ -8,7 +8,7 @@
  *
  * Rule evaluation happens at routing time (see src/pipeline/routing/evaluate-rules.ts):
  * a matching rule escalates routing (routing_override) and fires notifications
- * to its channels (webhook POST / slack webhook / email — recorded in the bell).
+ * to its channels (webhook POST / email — recorded in the bell).
  */
 import type { FastifyInstance } from 'fastify';
 import type { Repos } from '../../db/repo-types';

@@ -25,7 +25,6 @@ const UNITS: Unit[] = [
   { name: 'scorer', script: 'src/workers/scorer.worker.ts' },
   { name: 'router', script: 'src/workers/router.worker.ts' },
   { name: 'battlecard', script: 'src/workers/battlecard.worker.ts' },
-  { name: 'slack', script: 'src/integrations/slack-standalone.ts' },
 ];
 
 const children = new Map<string, ChildProcess>();
@@ -39,9 +38,8 @@ function startUnit(unit: Unit): void {
   children.set(unit.name, child);
   child.on('exit', (code, signal) => {
     // Restart only on a crash (non-zero exit), not on a clean exit. Some units
-    // legitimately exit 0 — e.g. the Slack standalone when Slack is unconfigured
-    // ("Slack not configured — skipping") or any worker asked to drain and stop.
-    // Hot-restarting a code-0 unit would cause an infinite tight restart loop.
+    // legitimately exit 0 — e.g. any worker asked to drain and stop. Hot-
+    // restarting a code-0 unit would cause an infinite tight restart loop.
     if (!shuttingDown && code !== 0) {
       console.log(`[engine] ${unit.name} crashed (code=${code} signal=${signal}); restarting`);
       startUnit(unit);

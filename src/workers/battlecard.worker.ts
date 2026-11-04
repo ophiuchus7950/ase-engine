@@ -10,7 +10,7 @@ import { runWorkerLoop } from './worker-utils';
  * yet) under trigger='worker'. The first runOnce call on startup performs the
  * "startup reconciliation" immediately.
  */
-const api = new ApiClient(config.API_BASE_URL, config.ASE_API_KEY);
+const api = new ApiClient(config.API_BASE_URL);
 
 async function runOnce(): Promise<void> {
   const result = await api.reconcileBattlecards();
